@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FotoFlip</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="brand">Foto<span>Flip</span></div>
+  <div class="header-actions">
+    <button class="btn btn-primary" id="btnImport">+ Import Photos</button>
+  </div>
+</header>
+
+<!-- Stats Bar -->
+<div class="stats-bar">
+  <div class="stat">
+    <div class="stat-value" id="statTotal">—</div>
+    <div class="stat-label">Total</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="statPurchased">—</div>
+    <div class="stat-label">Purchased</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="statBacklog">—</div>
+    <div class="stat-label">Backlog</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="statProcessed">—</div>
+    <div class="stat-label">Processed</div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab active" data-tab="all" data-label="All">All (0)</button>
+  <button class="tab" data-tab="purchased" data-label="Purchased">Purchased (0)</button>
+  <button class="tab" data-tab="backlog" data-label="Backlog">Backlog (0)</button>
+  <button class="tab" data-tab="passed" data-label="Passed">Passed (0)</button>
+</div>
+
+<!-- Items Grid -->
+<div class="items-container">
+  <div class="items-grid" id="itemsGrid">
+    <div class="empty-state">
+      <h3>No items yet</h3>
+      <p>Click <strong>+ Import Photos</strong> to start a new batch.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Import Photos</span>
+      <button class="modal-close" id="importClose">✕</button>
+    </div>
+
+    <!-- Step Indicator -->
+    <div style="padding: 16px 24px 0; border-bottom: 1px solid var(--border);">
+      <div class="step-indicator">
+        <div class="step active" id="step1">
+          <div class="step-num">1</div>
+          <div class="step-label">Select</div>
+        </div>
+        <div class="step" id="step2">
+          <div class="step-num">2</div>
+          <div class="step-label">Group</div>
+        </div>
+        <div class="step" id="step3">
+          <div class="step-num">3</div>
+          <div class="step-label">Status</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-body" id="importBody"></div>
+    <div class="modal-footer" id="importFooter"></div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

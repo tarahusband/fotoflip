@@ -1,0 +1,24 @@
+{
+  "name": "fotoflip",
+  "version": "2.0.0",
+  "description": "FotoFlip — listing starts the moment you buy",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": ["photo", "processing", "reseller", "listing"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@imgly/background-removal-node": "^1.4.5",
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.101.0",
+    "sharp": "^0.34.3",
+    "uuid": "^11.1.0"
+  }
+}

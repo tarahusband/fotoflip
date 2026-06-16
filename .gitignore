@@ -32,6 +32,10 @@ yarn-error.log*
 logs
 *.log
 
+# Runtime
+uploads/
+failed/
+
 # Environment variables
 .env
 .env.local
