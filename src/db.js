@@ -35,15 +35,6 @@ function initDb() {
       metadata TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS processing_queue (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      photo_id INTEGER NOT NULL,
-      priority INTEGER DEFAULT 0,
-      retry_count INTEGER DEFAULT 0,
-      created_at TEXT,
-      FOREIGN KEY (photo_id) REFERENCES photos(id)
-    );
-
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT
@@ -51,17 +42,31 @@ function initDb() {
 
     CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      status TEXT DEFAULT 'Purchased',
+      status TEXT DEFAULT 'Flip',
       purchase_date TEXT,
       photo_ids TEXT,
       processing_status TEXT DEFAULT 'pending',
       sku TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now')),
+      is_bundle INTEGER DEFAULT 0,
+      bundle_type TEXT DEFAULT '',
+      bundle_count INTEGER DEFAULT 0
     );
 
+
     CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(status);
-    CREATE INDEX IF NOT EXISTS idx_queue_priority ON processing_queue(priority DESC);
   `);
+
+  // drop obsolete tables
+  db.exec(`DROP TABLE IF EXISTS processing_queue`);
+
+  // migrate bundle columns onto existing DBs
+  const cols = db.pragma('table_info(items)').map(c => c.name);
+  if (!cols.includes('is_bundle'))     db.exec(`ALTER TABLE items ADD COLUMN is_bundle INTEGER DEFAULT 0`);
+  if (!cols.includes('bundle_type'))   db.exec(`ALTER TABLE items ADD COLUMN bundle_type TEXT DEFAULT ''`);
+  if (!cols.includes('bundle_count'))  db.exec(`ALTER TABLE items ADD COLUMN bundle_count INTEGER DEFAULT 0`);
+  if (!cols.includes('weight'))        db.exec(`ALTER TABLE items ADD COLUMN weight TEXT DEFAULT ''`);
+  if (!cols.includes('weight_unit'))   db.exec(`ALTER TABLE items ADD COLUMN weight_unit TEXT DEFAULT 'LB'`);
 
   return db;
 }

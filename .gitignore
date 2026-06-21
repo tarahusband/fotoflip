@@ -32,9 +32,16 @@ yarn-error.log*
 logs
 *.log
 
-# Runtime
+# Runtime — user data, never commit
 uploads/
 failed/
+processed/
+input/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
 
 # Environment variables
 .env
@@ -42,3 +49,18 @@ failed/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Session notes (contain API patterns and internal details)
+claude*.md
+
+# Local assets and binaries
+branding/
+FotoFlip.app/
+start-fotoflip.command
+
+# One-off utility scripts
+fix-rotated-photos.js
+rotate-*.js
+
+# Claude Code session data
+.claude/
