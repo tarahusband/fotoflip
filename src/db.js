@@ -62,11 +62,20 @@ function initDb() {
 
   // migrate bundle columns onto existing DBs
   const cols = db.pragma('table_info(items)').map(c => c.name);
-  if (!cols.includes('is_bundle'))     db.exec(`ALTER TABLE items ADD COLUMN is_bundle INTEGER DEFAULT 0`);
-  if (!cols.includes('bundle_type'))   db.exec(`ALTER TABLE items ADD COLUMN bundle_type TEXT DEFAULT ''`);
-  if (!cols.includes('bundle_count'))  db.exec(`ALTER TABLE items ADD COLUMN bundle_count INTEGER DEFAULT 0`);
-  if (!cols.includes('weight'))        db.exec(`ALTER TABLE items ADD COLUMN weight TEXT DEFAULT ''`);
-  if (!cols.includes('weight_unit'))   db.exec(`ALTER TABLE items ADD COLUMN weight_unit TEXT DEFAULT 'LB'`);
+  if (!cols.includes('is_bundle'))          db.exec(`ALTER TABLE items ADD COLUMN is_bundle INTEGER DEFAULT 0`);
+  if (!cols.includes('bundle_type'))        db.exec(`ALTER TABLE items ADD COLUMN bundle_type TEXT DEFAULT ''`);
+  if (!cols.includes('bundle_count'))       db.exec(`ALTER TABLE items ADD COLUMN bundle_count INTEGER DEFAULT 0`);
+  if (!cols.includes('weight'))             db.exec(`ALTER TABLE items ADD COLUMN weight TEXT DEFAULT ''`);
+  if (!cols.includes('weight_unit'))        db.exec(`ALTER TABLE items ADD COLUMN weight_unit TEXT DEFAULT 'LB'`);
+  // Inventory lifecycle columns
+  if (!cols.includes('location'))           db.exec(`ALTER TABLE items ADD COLUMN location TEXT DEFAULT ''`);
+  if (!cols.includes('inv_status'))         db.exec(`ALTER TABLE items ADD COLUMN inv_status TEXT DEFAULT 'ready'`);
+  if (!cols.includes('date_listed'))        db.exec(`ALTER TABLE items ADD COLUMN date_listed TEXT`);
+  if (!cols.includes('date_sold'))          db.exec(`ALTER TABLE items ADD COLUMN date_sold TEXT`);
+  if (!cols.includes('date_shipped'))       db.exec(`ALTER TABLE items ADD COLUMN date_shipped TEXT`);
+  if (!cols.includes('poshmark_exported'))  db.exec(`ALTER TABLE items ADD COLUMN poshmark_exported INTEGER DEFAULT 0`);
+  if (!cols.includes('whatnot_exported'))   db.exec(`ALTER TABLE items ADD COLUMN whatnot_exported INTEGER DEFAULT 0`);
+  if (!cols.includes('etsy_exported'))      db.exec(`ALTER TABLE items ADD COLUMN etsy_exported INTEGER DEFAULT 0`);
 
   return db;
 }

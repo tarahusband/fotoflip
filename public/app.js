@@ -12,6 +12,25 @@ let activeFilter = 'all';
 let searchQuery = '';
 let selectedIds = new Set();
 
+// Inventory state
+let activeView = 'photos';
+let invItems = [];
+let invStats = {};
+let invActiveFilter = 'all';
+let invSearchQuery = '';
+let invSelectedIds = new Set();
+
+// ── View switching ─────────────────────────────────────────────────────────────
+function switchView(view) {
+  activeView = view;
+  document.getElementById('viewPhotos').classList.toggle('hidden', view !== 'photos');
+  document.getElementById('viewInventory').classList.toggle('hidden', view !== 'inventory');
+  document.querySelectorAll('.nav-item').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.view === view)
+  );
+  if (view === 'inventory') loadInventory();
+}
+
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
   const res = await fetch(API + path, {
@@ -118,9 +137,10 @@ async function exportAllPoshmark(btn) {
     const res = await fetch('/api/export/poshmark');
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      toast(j.error || '🌸 Export failed', 'error');
+      toast('🌸 ' + (j.error || 'Export failed'), 'error');
       return;
     }
+    const exportedIds = JSON.parse(res.headers.get('X-Export-Item-Ids') || '[]');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -129,9 +149,17 @@ async function exportAllPoshmark(btn) {
     a.download = `poshmark-bulk-${today}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast('Poshmark CSV downloaded', 'success');
+    toast(`Poshmark CSV downloaded (${exportedIds.length} items)`, 'success');
+    if (exportedIds.length && confirm(`Mark ${exportedIds.length} item${exportedIds.length !== 1 ? 's' : ''} as Listed on Poshmark?`)) {
+      await apiFetch('/api/inventory/bulk', {
+        method: 'PUT',
+        body: JSON.stringify({ ids: exportedIds, poshmark_exported: 1, inv_status: 'listed', date_listed: today }),
+      });
+      toast('Items marked as Listed', 'success');
+      if (activeView === 'inventory') loadInventory();
+    }
   } catch (e) {
-    toast('🌸 Export failed', 'error');
+    toast('🌸 Export failed: ' + e.message, 'error');
   } finally {
     if (btn) { btn.textContent = orig; btn.disabled = false; }
   }
@@ -144,9 +172,10 @@ async function exportAllWhatnot(btn) {
     const res = await fetch('/api/export/whatnot');
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      toast(j.error || '🌸 Export failed', 'error');
+      toast('🌸 ' + (j.error || 'Export failed'), 'error');
       return;
     }
+    const exportedIds = JSON.parse(res.headers.get('X-Export-Item-Ids') || '[]');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -155,9 +184,17 @@ async function exportAllWhatnot(btn) {
     a.download = `whatnot-bulk-${today}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast('CSV downloaded', 'success');
+    toast(`Whatnot CSV downloaded (${exportedIds.length} items)`, 'success');
+    if (exportedIds.length && confirm(`Mark ${exportedIds.length} item${exportedIds.length !== 1 ? 's' : ''} as Listed on Whatnot?`)) {
+      await apiFetch('/api/inventory/bulk', {
+        method: 'PUT',
+        body: JSON.stringify({ ids: exportedIds, whatnot_exported: 1, inv_status: 'listed', date_listed: today }),
+      });
+      toast('Items marked as Listed', 'success');
+      if (activeView === 'inventory') loadInventory();
+    }
   } catch (e) {
-    toast('🌸 Export failed', 'error');
+    toast('🌸 Export failed: ' + e.message, 'error');
   } finally {
     if (btn) { btn.textContent = orig; btn.disabled = false; }
   }
@@ -1269,7 +1306,227 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  document.getElementById('invSearch').addEventListener('input', e => {
+    invSearchQuery = e.target.value.trim().toLowerCase();
+    renderInventoryTable();
+  });
+
   checkMakeStatus();
   loadItems();
   setInterval(loadItems, 10000);
 });
+
+// ── Inventory ─────────────────────────────────────────────────────────────────
+
+async function loadInventory() {
+  try {
+    const [fetchedItems, fetchedStats] = await Promise.all([
+      apiFetch('/api/inventory'),
+      apiFetch('/api/inventory/stats'),
+    ]);
+    invItems = fetchedItems;
+    invStats = fetchedStats;
+    renderInventoryStats();
+    renderInventoryFilters();
+    renderInventoryTable();
+  } catch (e) {
+    toast('🌸 Failed to load inventory: ' + e.message, 'error');
+  }
+}
+
+function renderInventoryStats() {
+  const s = invStats;
+  document.getElementById('invStats').innerHTML = `
+    <div class="inv-stat"><div class="inv-stat-value">${s.total ?? '—'}</div><div class="inv-stat-label">Total</div></div>
+    <div class="inv-stat"><div class="inv-stat-value">${s.ready ?? '—'}</div><div class="inv-stat-label">Ready</div></div>
+    <div class="inv-stat"><div class="inv-stat-value">${s.listed ?? '—'}</div><div class="inv-stat-label">Listed</div></div>
+    <div class="inv-stat"><div class="inv-stat-value">${s.sold ?? '—'}</div><div class="inv-stat-label">Sold</div></div>
+    <div class="inv-stat"><div class="inv-stat-value">${s.shipped ?? '—'}</div><div class="inv-stat-label">Shipped</div></div>
+  `;
+}
+
+const INV_FILTERS = [
+  { key: 'all',      label: 'All' },
+  { key: 'ready',    label: 'Ready' },
+  { key: 'listed',   label: 'Listed' },
+  { key: 'sold',     label: 'Sold' },
+  { key: 'shipped',  label: 'Shipped' },
+  { key: 'review',   label: 'Review' },
+  { key: 'draft',    label: 'Draft' },
+  { key: 'archived', label: 'Archived' },
+];
+
+function renderInventoryFilters() {
+  const s = invStats;
+  const counts = { all: s.total, ready: s.ready, listed: s.listed, sold: s.sold, shipped: s.shipped, review: s.review, draft: s.draft, archived: s.archived };
+  document.getElementById('invFilters').innerHTML = INV_FILTERS.map(f =>
+    `<button class="inv-filter-btn ${invActiveFilter === f.key ? 'active' : ''}" onclick="invSetFilter('${f.key}')">
+      ${f.label}<span class="inv-filter-count">${counts[f.key] ?? 0}</span>
+    </button>`
+  ).join('');
+}
+
+function invSetFilter(key) {
+  invActiveFilter = key;
+  invSelectedIds.clear();
+  renderInventoryFilters();
+  renderInventoryTable();
+  renderInvBulkBar();
+}
+
+function filteredInvItems() {
+  let list = invActiveFilter === 'all' ? invItems : invItems.filter(i => i.inv_status === invActiveFilter);
+  if (invSearchQuery) {
+    const q = invSearchQuery;
+    list = list.filter(i =>
+      (i.meta?.title || '').toLowerCase().includes(q) ||
+      buildSku(i.id, i.meta || {}).toLowerCase().includes(q) ||
+      (i.location || '').toLowerCase().includes(q)
+    );
+  }
+  return list;
+}
+
+function renderInventoryTable() {
+  const list = filteredInvItems();
+  const body = document.getElementById('invBody');
+  const empty = document.getElementById('invEmpty');
+
+  if (!list.length) {
+    body.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+
+  body.innerHTML = list.map(item => {
+    const meta = item.meta || {};
+    const sku = buildSku(item.id, meta);
+    const title = meta.title || (meta.brand ? `${meta.brand} ${meta.category || ''}`.trim() : 'Untitled');
+    const thumb = item.thumbPath ? invThumbUrl(item.thumbPath) : null;
+    const isSelected = invSelectedIds.has(item.id);
+    const added = (item.created_at || '').slice(0, 10);
+    const sold = item.date_sold || '';
+    const loc = item.location || '';
+    const status = item.inv_status || 'ready';
+
+    return `<tr class="${isSelected ? 'inv-selected' : ''}" onclick="invRowClick(event,${item.id})">
+      <td onclick="event.stopPropagation()"><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="invToggleRow(${item.id},this)"></td>
+      <td><div class="inv-thumb">${thumb ? `<img src="${thumb}" alt="" onerror="this.style.display='none'">` : ''}</div></td>
+      <td><div class="inv-item-title" title="${escHtml(title)}">${escHtml(title)}</div><div class="inv-item-sku">${escHtml(sku)}</div></td>
+      <td>${escHtml(sku)}</td>
+      <td>${loc ? `<span class="inv-location-pill">${escHtml(loc)}</span>` : `<span class="inv-location-pill empty">—</span>`}</td>
+      <td><span class="inv-status ${status}">${status.charAt(0).toUpperCase() + status.slice(1)}</span></td>
+      <td class="inv-mp-badge ${item.poshmark_exported ? 'inv-mp-yes' : 'inv-mp-no'}">${item.poshmark_exported ? '✓' : '—'}</td>
+      <td class="inv-mp-badge ${item.whatnot_exported ? 'inv-mp-yes' : 'inv-mp-no'}">${item.whatnot_exported ? '✓' : '—'}</td>
+      <td class="inv-mp-badge ${item.etsy_exported ? 'inv-mp-yes' : 'inv-mp-no'}">${item.etsy_exported ? '✓' : '—'}</td>
+      <td class="inv-date">${added}</td>
+      <td class="inv-date">${sold || '—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('invSelectAll').checked = list.length > 0 && list.every(i => invSelectedIds.has(i.id));
+}
+
+function invThumbUrl(filePath) {
+  if (!filePath) return null;
+  if (filePath.includes('/processed/')) {
+    const part = filePath.split('/processed/').pop();
+    return `/processed/${part}`;
+  }
+  if (filePath.includes('/uploads/')) {
+    const part = filePath.split('/uploads/').pop();
+    return `/uploads/${part}`;
+  }
+  return null;
+}
+
+function invRowClick(e, id) {
+  if (e.target.tagName === 'INPUT') return;
+  invToggleRow(id, null);
+}
+
+function invToggleRow(id, checkbox) {
+  if (invSelectedIds.has(id)) invSelectedIds.delete(id);
+  else invSelectedIds.add(id);
+  if (checkbox) checkbox.checked = invSelectedIds.has(id);
+  const row = checkbox?.closest('tr') || document.querySelector(`tr[onclick*="${id}"]`);
+  if (row) row.classList.toggle('inv-selected', invSelectedIds.has(id));
+  document.getElementById('invSelectAll').checked =
+    filteredInvItems().length > 0 && filteredInvItems().every(i => invSelectedIds.has(i.id));
+  renderInvBulkBar();
+}
+
+function invToggleAll(masterCheckbox) {
+  const list = filteredInvItems();
+  if (masterCheckbox.checked) list.forEach(i => invSelectedIds.add(i.id));
+  else list.forEach(i => invSelectedIds.delete(i.id));
+  renderInventoryTable();
+  renderInvBulkBar();
+}
+
+function renderInvBulkBar() {
+  const bar = document.getElementById('invBulkBar');
+  const count = invSelectedIds.size;
+  if (!count) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  bar.innerHTML = `
+    <span class="inv-bulk-count">${count} item${count !== 1 ? 's' : ''} selected</span>
+    <input class="inv-bulk-location" id="invLocInput" placeholder="BOX-001" title="Assign location">
+    <button class="btn btn-sm btn-secondary" onclick="invBulkSetLocation()">Assign Location</button>
+    <select class="inv-status-select" id="invStatusSelect">
+      <option value="">— Change Status —</option>
+      ${['ready','review','draft','listed','sold','shipped','archived'].map(s =>
+        `<option value="${s}">${s.charAt(0).toUpperCase()+s.slice(1)}</option>`
+      ).join('')}
+    </select>
+    <button class="btn btn-sm btn-secondary" onclick="invBulkSetStatus()">Apply</button>
+    <button class="btn btn-sm btn-danger" onclick="invBulkArchive()">Archive</button>
+    <button class="btn btn-sm btn-outline" onclick="invSelectedIds.clear();renderInventoryTable();renderInvBulkBar()">✕ Clear</button>
+  `;
+}
+
+async function invBulkSetLocation() {
+  const loc = document.getElementById('invLocInput')?.value?.trim();
+  if (!loc) { toast('🌸 Enter a location first', 'error'); return; }
+  try {
+    await apiFetch('/api/inventory/bulk', {
+      method: 'PUT',
+      body: JSON.stringify({ ids: [...invSelectedIds], location: loc }),
+    });
+    toast(`Location set to ${loc}`, 'success');
+    await loadInventory();
+  } catch (e) {
+    toast('🌸 ' + e.message, 'error');
+  }
+}
+
+async function invBulkSetStatus() {
+  const status = document.getElementById('invStatusSelect')?.value;
+  if (!status) { toast('🌸 Choose a status first', 'error'); return; }
+  const body = { ids: [...invSelectedIds], inv_status: status };
+  if (status === 'sold') body.date_sold = new Date().toISOString().slice(0, 10);
+  if (status === 'shipped') body.date_shipped = new Date().toISOString().slice(0, 10);
+  try {
+    await apiFetch('/api/inventory/bulk', { method: 'PUT', body: JSON.stringify(body) });
+    toast(`Status updated to ${status}`, 'success');
+    await loadInventory();
+  } catch (e) {
+    toast('🌸 ' + e.message, 'error');
+  }
+}
+
+async function invBulkArchive() {
+  const count = invSelectedIds.size;
+  if (!confirm(`Archive ${count} item${count !== 1 ? 's' : ''}?`)) return;
+  try {
+    await apiFetch('/api/inventory/bulk', {
+      method: 'PUT',
+      body: JSON.stringify({ ids: [...invSelectedIds], inv_status: 'archived' }),
+    });
+    toast(`${count} item${count !== 1 ? 's' : ''} archived`, 'success');
+    await loadInventory();
+  } catch (e) {
+    toast('🌸 ' + e.message, 'error');
+  }
+}

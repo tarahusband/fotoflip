@@ -427,6 +427,7 @@ app.get('/api/export/whatnot', async (req, res) => {
   const csv = HEADERS.join(',') + '\r\n' + rows.join('\r\n') + '\r\n';
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="whatnot-bulk-${today}.csv"`);
+  res.setHeader('X-Export-Item-Ids', JSON.stringify(items.map(i => i.id)));
   res.send(csv);
 });
 
@@ -775,6 +776,7 @@ app.get('/api/export/poshmark', async (req, res) => {
   const csv = [POSHMARK_HEADERS.join(','), ...rows].join('\r\n') + '\r\n';
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="poshmark-bulk-${today}.csv"`);
+  res.setHeader('X-Export-Item-Ids', JSON.stringify(items.map(i => i.id)));
   res.send(csv);
 });
 
@@ -916,7 +918,7 @@ app.post('/api/items/:id/export/etsy', async (req, res) => {
   const db = getDb();
   const token = db.prepare(`SELECT value FROM settings WHERE key='etsy_access_token'`).get()?.value;
   const shopId = db.prepare(`SELECT value FROM settings WHERE key='etsy_shop_id'`).get()?.value;
-  if (!token || !shopId) return res.status(400).json({ error: 'Etsy not connected — click Connect Etsy first' });
+  if (!token || !shopId) return res.status(400).json({ error: '🌸 Etsy not connected — click Connect Etsy first' });
 
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
@@ -1015,7 +1017,7 @@ function etsyCategoryMap(category) {
 app.post('/api/items/:id/export/make', async (req, res) => {
   const db = getDb();
   const webhookUrl = db.prepare(`SELECT value FROM settings WHERE key='make_webhook_url'`).get()?.value;
-  if (!webhookUrl) return res.status(400).json({ error: 'Make.com webhook URL not configured — add it in Settings' });
+  if (!webhookUrl) return res.status(400).json({ error: '🌸 Make.com webhook not configured — add it in Settings' });
 
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
@@ -1124,7 +1126,7 @@ app.post('/api/admin/regenerate-labels', async (req, res) => {
 // Save Make webhook URL
 app.post('/api/settings/make-webhook', (req, res) => {
   const { url } = req.body;
-  if (!url || !url.startsWith('https://hook.')) return res.status(400).json({ error: 'Invalid webhook URL' });
+  if (!url || !url.startsWith('https://hook.')) return res.status(400).json({ error: '🌸 Invalid webhook URL — must start with https://hook.' });
   const db = getDb();
   db.prepare(`INSERT OR REPLACE INTO settings (key,value) VALUES ('make_webhook_url',?)`).run(url);
   res.json({ success: true });
@@ -1134,6 +1136,95 @@ app.get('/api/settings/make-webhook', (req, res) => {
   const db = getDb();
   const row = db.prepare(`SELECT value FROM settings WHERE key='make_webhook_url'`).get();
   res.json({ url: row?.value || '' });
+});
+
+// ── Inventory API ─────────────────────────────────────────────────────────────
+
+app.get('/api/inventory', (req, res) => {
+  const db = getDb();
+  const { status, search } = req.query;
+
+  let query = `SELECT * FROM items`;
+  const params = [];
+  const clauses = [];
+
+  if (status && status !== 'all') {
+    clauses.push(`inv_status = ?`);
+    params.push(status);
+  }
+
+  if (clauses.length) query += ` WHERE ` + clauses.join(' AND ');
+  query += ` ORDER BY created_at DESC`;
+
+  const items = db.prepare(query).all(...params);
+  const photos = db.prepare(`SELECT * FROM photos`).all();
+  const photoMap = Object.fromEntries(photos.map(p => [p.id, p]));
+
+  let result = items.map(item => {
+    const photoIds = JSON.parse(item.photo_ids || '[]');
+    const photo = photoMap[photoIds[0]] || null;
+    const meta = photo?.metadata ? JSON.parse(photo.metadata) : {};
+    return { ...item, meta, thumbPath: photo?.processed_path || photo?.path || null };
+  });
+
+  if (search) {
+    const q = search.toLowerCase();
+    result = result.filter(item =>
+      (item.meta.title || '').toLowerCase().includes(q) ||
+      buildSku(item.id, item.meta).toLowerCase().includes(q) ||
+      (item.location || '').toLowerCase().includes(q)
+    );
+  }
+
+  res.json(result);
+});
+
+// Inventory stats
+app.get('/api/inventory/stats', (req, res) => {
+  const db = getDb();
+  const total    = db.prepare(`SELECT COUNT(*) as n FROM items`).get().n;
+  const ready    = db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'ready'`).get().n;
+  const listed   = db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'listed'`).get().n;
+  const sold     = db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'sold'`).get().n;
+  const shipped  = db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'shipped'`).get().n;
+  const archived = db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'archived'`).get().n;
+  const review   = db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'review'`).get().n;
+  const draft    = db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'draft'`).get().n;
+  res.json({ total, ready, listed, sold, shipped, archived, review, draft });
+});
+
+// Update a single item's inventory fields
+app.put('/api/items/:id/inventory', (req, res) => {
+  const db = getDb();
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: '🌸 Item not found' });
+
+  const allowed = ['location', 'inv_status', 'date_listed', 'date_sold', 'date_shipped', 'poshmark_exported', 'whatnot_exported', 'etsy_exported'];
+  const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
+  if (!updates.length) return res.status(400).json({ error: '🌸 No valid fields to update' });
+
+  for (const [col, val] of updates) {
+    db.prepare(`UPDATE items SET ${col} = ? WHERE id = ?`).run(val, req.params.id);
+  }
+  res.json({ success: true });
+});
+
+// Bulk update inventory fields for multiple items
+app.put('/api/inventory/bulk', (req, res) => {
+  const db = getDb();
+  const { ids, ...fields } = req.body;
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: '🌸 No item IDs provided' });
+
+  const allowed = ['location', 'inv_status', 'date_listed', 'date_sold', 'date_shipped', 'poshmark_exported', 'whatnot_exported', 'etsy_exported'];
+  const updates = Object.entries(fields).filter(([k]) => allowed.includes(k));
+  if (!updates.length) return res.status(400).json({ error: '🌸 No valid fields to update' });
+
+  const setClauses = updates.map(([col]) => `${col} = ?`).join(', ');
+  const setValues = updates.map(([, v]) => v);
+  const placeholders = ids.map(() => '?').join(',');
+
+  db.prepare(`UPDATE items SET ${setClauses} WHERE id IN (${placeholders})`).run(...setValues, ...ids);
+  res.json({ success: true, updated: ids.length });
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
