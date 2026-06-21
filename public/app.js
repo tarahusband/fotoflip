@@ -13,7 +13,7 @@ let searchQuery = '';
 let selectedIds = new Set();
 
 // Inventory state
-let activeView = 'photos';
+let activeView = 'home';
 let invItems = [];
 let invStats = {};
 let invActiveFilter = 'all';
@@ -23,12 +23,16 @@ let invSelectedIds = new Set();
 // ── View switching ─────────────────────────────────────────────────────────────
 function switchView(view) {
   activeView = view;
+  document.getElementById('viewHome').classList.toggle('hidden', view !== 'home');
   document.getElementById('viewPhotos').classList.toggle('hidden', view !== 'photos');
   document.getElementById('viewInventory').classList.toggle('hidden', view !== 'inventory');
+  document.getElementById('viewMarkets').classList.toggle('hidden', view !== 'markets');
   document.querySelectorAll('.nav-item').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.view === view)
   );
   if (view === 'inventory') loadInventory();
+  if (view === 'home') loadDashboard();
+  if (view === 'markets') loadMarkets();
 }
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
@@ -54,12 +58,7 @@ function toast(msg, type = 'success') {
 }
 
 function openMarketplaces() {
-  activeItemId = null;
-  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
-  document.getElementById('detailEmpty').classList.add('hidden');
-  const content = document.getElementById('detailContent');
-  content.classList.remove('hidden');
-  content.innerHTML = renderMarketplacesGlobal();
+  switchView('markets');
 }
 
 function renderMarketplacesGlobal() {
@@ -1314,6 +1313,7 @@ document.addEventListener('DOMContentLoaded', () => {
   checkMakeStatus();
   loadItems();
   setInterval(loadItems, 10000);
+  switchView('home');
 });
 
 // ── Inventory ─────────────────────────────────────────────────────────────────
@@ -1380,7 +1380,7 @@ function filteredInvItems() {
     const q = invSearchQuery;
     list = list.filter(i =>
       (i.meta?.title || '').toLowerCase().includes(q) ||
-      buildSku(i.id, i.meta || {}).toLowerCase().includes(q) ||
+      generateSku(i, i.meta || {}).toLowerCase().includes(q) ||
       (i.location || '').toLowerCase().includes(q)
     );
   }
@@ -1401,7 +1401,7 @@ function renderInventoryTable() {
 
   body.innerHTML = list.map(item => {
     const meta = item.meta || {};
-    const sku = buildSku(item.id, meta);
+    const sku = generateSku(item, meta);
     const title = meta.title || (meta.brand ? `${meta.brand} ${meta.category || ''}`.trim() : 'Untitled');
     const thumb = item.thumbPath ? invThumbUrl(item.thumbPath) : null;
     const isSelected = invSelectedIds.has(item.id);
@@ -1529,4 +1529,270 @@ async function invBulkArchive() {
   } catch (e) {
     toast('🌸 ' + e.message, 'error');
   }
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+async function loadDashboard() {
+  try {
+    const data = await apiFetch('/api/dashboard');
+    renderDashboardKpi(data.stats);
+    renderDashboardActions(data.stats);
+    renderDashboardImports(data.recentImports);
+    renderDashboardActivity(data.recentActivity);
+  } catch (e) {
+    document.getElementById('dashKpi').innerHTML =
+      `<p style="color:var(--red)">🌸 Failed to load dashboard: ${e.message}</p>`;
+  }
+}
+
+function renderDashboardKpi(stats) {
+  const kpis = [
+    { label: 'Total Items', value: stats.total,    icon: '📦', cls: 'kpi-total'   },
+    { label: 'Ready',       value: stats.ready,    icon: '✅', cls: 'kpi-ready'   },
+    { label: 'Listed',      value: stats.listed,   icon: '🏷',  cls: 'kpi-listed'  },
+    { label: 'Sold',        value: stats.sold,     icon: '💰', cls: 'kpi-sold'    },
+    { label: 'Shipped',     value: stats.shipped,  icon: '📬', cls: 'kpi-shipped' },
+  ];
+  document.getElementById('dashKpi').innerHTML = kpis.map(k => `
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon ${k.cls}">${k.icon}</div>
+      <div>
+        <div class="dash-kpi-value">${k.value}</div>
+        <div class="dash-kpi-label">${k.label}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderDashboardActions(stats) {
+  const readyCount = stats.ready || 0;
+  const actions = [
+    { icon: '📥', cls: 'da-import',  name: 'Import',   desc: 'Add new photos',       fn: 'openImport()' },
+    { icon: '📋', cls: 'da-inv',     name: 'Inventory', desc: 'Manage all items',     fn: "switchView('inventory')" },
+    { icon: 'P',  cls: 'da-posh',    name: 'Poshmark',  desc: `${readyCount} ready`,  fn: 'exportAllPoshmark(null)' },
+    { icon: 'W',  cls: 'da-whatnot', name: 'Whatnot',   desc: `${readyCount} ready`,  fn: 'exportAllWhatnot(null)' },
+    { icon: 'E',  cls: 'da-etsy',    name: 'Etsy',      desc: 'via Make.com',         fn: "switchView('markets')" },
+    { icon: '🛍', cls: 'da-markets', name: 'Markets',   desc: 'All channels',         fn: "switchView('markets')" },
+  ];
+  const nudge = readyCount > 0
+    ? `<div class="dash-nudge" onclick="exportAllPoshmark(null)">
+        <span>🚀 ${readyCount} item${readyCount !== 1 ? 's' : ''} ready to export</span>
+        <span>Export →</span>
+       </div>`
+    : '';
+  document.getElementById('dashActions').innerHTML = `
+    <div class="dash-card-title">Quick Actions</div>
+    <div class="dash-actions-grid">
+      ${actions.map(a => `
+        <button class="dash-action-btn" onclick="${a.fn}">
+          <div class="dash-action-icon ${a.cls}">${a.icon}</div>
+          <div class="dash-action-name">${a.name}</div>
+          <div class="dash-action-desc">${a.desc}</div>
+        </button>`).join('')}
+    </div>
+    ${nudge}`;
+}
+
+function renderDashboardImports(imports) {
+  const el = document.getElementById('dashImports');
+  if (!imports.length) {
+    el.innerHTML = `<div class="dash-card-title">Recent Imports</div><div class="dash-empty">No imports yet</div>`;
+    return;
+  }
+  const rows = imports.map(imp => {
+    const thumbs = imp.thumbs.slice(0, 4);
+    const grid = thumbs.map(t =>
+      t ? `<img src="${t}" loading="lazy" onerror="this.style.display='none'">` : ''
+    ).join('');
+    return `<div class="dash-import-row">
+      <div class="dash-import-thumbs">${grid}</div>
+      <div class="dash-import-info">
+        <div class="dash-import-box">${imp.box || 'Untitled box'}</div>
+        <div class="dash-import-meta">${imp.count} item${imp.count !== 1 ? 's' : ''} · ${imp.latestDate ? timeAgo(imp.latestDate) : ''}</div>
+      </div>
+      <span class="dash-import-badge">${imp.count}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="dash-card-title">Recent Imports</div>${rows}`;
+}
+
+function renderDashboardActivity(activity) {
+  const el = document.getElementById('dashActivity');
+  if (!activity.length) {
+    el.innerHTML = `<div class="dash-card-title">Recent Activity</div><div class="dash-empty">No activity yet</div>`;
+    return;
+  }
+  const dotCls = { import: 'da-dot-import', poshmark: 'da-dot-poshmark', whatnot: 'da-dot-whatnot' };
+  const dotIcon = { import: '📦', poshmark: 'P', whatnot: 'W' };
+  const rows = activity.map(a => `
+    <div class="dash-activity-row">
+      <div class="dash-activity-dot ${dotCls[a.type] || 'da-dot-import'}">${dotIcon[a.type] || '📦'}</div>
+      <div class="dash-activity-label">${a.label}</div>
+      <div class="dash-activity-time">${timeAgo(a.date)}</div>
+    </div>`).join('');
+  el.innerHTML = `<div class="dash-card-title">Recent Activity</div>${rows}`;
+}
+
+function timeAgo(dateStr) {
+  const ms = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7)  return `${d}d ago`;
+  const w = Math.floor(d / 7);
+  if (w < 5)  return `${w}w ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+// ── Markets ───────────────────────────────────────────────────────────────────
+
+async function loadMarkets() {
+  try {
+    const data = await apiFetch('/api/markets');
+    renderMarketsSummary(data.summary);
+    renderMarketsCards(data.platforms, data.summary.ready);
+    renderMarketsHistory(data.exportHistory);
+    renderMarketsErrors(data.errorItems);
+    const saved = localStorage.getItem('mkt_coupon_note') || '';
+    document.getElementById('mktCouponText').value = saved;
+  } catch (e) {
+    document.getElementById('mktSummary').innerHTML =
+      `<p style="color:var(--red)">🌸 Failed to load markets: ${e.message}</p>`;
+  }
+}
+
+function renderMarketsSummary(s) {
+  const lastExportStr = s.lastExport
+    ? `Last export ${timeAgo(s.lastExport)}`
+    : 'No exports yet';
+  document.getElementById('mktSummary').innerHTML = `
+    <div class="mkt-stat">
+      <div class="mkt-stat-value">${s.ready}</div>
+      <div class="mkt-stat-label">Ready to Export</div>
+    </div>
+    <div class="mkt-stat">
+      <div class="mkt-stat-value">${lastExportStr}</div>
+      <div class="mkt-stat-label">Last Export</div>
+    </div>
+    <div class="mkt-stat">
+      <div class="mkt-stat-value">${s.connectedCount}</div>
+      <div class="mkt-stat-label">Connected Channels</div>
+    </div>
+    <div class="mkt-stat">
+      <div class="mkt-stat-value ${s.errors > 0 ? 'mkt-stat-error' : ''}">${s.errors}</div>
+      <div class="mkt-stat-label">Errors Needing Review</div>
+    </div>`;
+}
+
+function renderMarketsCards(platforms, ready) {
+  const p = platforms.poshmark;
+  const w = platforms.whatnot;
+  const e = platforms.etsy;
+
+  const poshCard = `
+    <div class="mkt-platform-card">
+      <div class="mkt-platform-head">
+        <div class="mkt-platform-logo mp-poshmark">P</div>
+        <div>
+          <div class="mkt-platform-name">Poshmark</div>
+          <div class="mkt-platform-meta">CSV upload · manual listing</div>
+        </div>
+        <span class="status-pill status-done" style="margin-left:auto">Ready</span>
+      </div>
+      <div class="mkt-platform-stats">
+        <div class="mkt-pstat"><div class="mkt-pstat-val">${p.ready}</div><div class="mkt-pstat-lbl">Ready</div></div>
+        <div class="mkt-pstat"><div class="mkt-pstat-val">${p.exported}</div><div class="mkt-pstat-lbl">Exported</div></div>
+      </div>
+      <div class="mkt-fields">${p.fields.map(f => `<span class="mkt-field-tag">${f}</span>`).join('')}</div>
+      <div class="mkt-platform-actions">
+        <button class="btn btn-sm btn-primary" onclick="exportAllPoshmark(this)" ${ready === 0 ? 'disabled' : ''}>⬇ Generate CSV</button>
+      </div>
+      ${p.lastExport ? `<div class="mkt-last-export">Last export ${timeAgo(p.lastExport)}</div>` : ''}
+    </div>`;
+
+  const whatnotCard = `
+    <div class="mkt-platform-card">
+      <div class="mkt-platform-head">
+        <div class="mkt-platform-logo mp-whatnot">W</div>
+        <div>
+          <div class="mkt-platform-name">Whatnot</div>
+          <div class="mkt-platform-meta">CSV upload · images via ImgBB</div>
+        </div>
+        <span class="status-pill status-done" style="margin-left:auto">Ready</span>
+      </div>
+      <div class="mkt-platform-stats">
+        <div class="mkt-pstat"><div class="mkt-pstat-val">${w.ready}</div><div class="mkt-pstat-lbl">Ready</div></div>
+        <div class="mkt-pstat"><div class="mkt-pstat-val">${w.exported}</div><div class="mkt-pstat-lbl">Exported</div></div>
+      </div>
+      <div class="mkt-fields">${w.fields.map(f => `<span class="mkt-field-tag">${f}</span>`).join('')}</div>
+      <div class="mkt-platform-actions">
+        <button class="btn btn-sm btn-primary" onclick="exportAllWhatnot(this)" ${ready === 0 ? 'disabled' : ''}>⬇ Generate CSV</button>
+      </div>
+      ${w.lastExport ? `<div class="mkt-last-export">Last export ${timeAgo(w.lastExport)}</div>` : ''}
+    </div>`;
+
+  const etsyConnected = e.connected;
+  const etsyCard = `
+    <div class="mkt-platform-card">
+      <div class="mkt-platform-head">
+        <div class="mkt-platform-logo mp-etsy">E</div>
+        <div>
+          <div class="mkt-platform-name">Etsy via Make.com</div>
+          <div class="mkt-platform-meta">Webhook → Etsy draft</div>
+        </div>
+        <span class="status-pill ${etsyConnected ? 'status-done' : 'status-pending'}" style="margin-left:auto">
+          ${etsyConnected ? 'Connected' : 'Not Connected'}
+        </span>
+      </div>
+      <div class="mkt-fields">${e.fields.map(f => `<span class="mkt-field-tag">${f}</span>`).join('')}</div>
+      <div class="mkt-platform-actions">
+        ${etsyConnected
+          ? `<button class="btn btn-sm btn-primary" onclick="showMakeSetup()">⚙ Reconfigure</button>`
+          : `<button class="btn btn-sm btn-secondary" onclick="showMakeSetup()">⚙ Configure Make.com</button>`}
+      </div>
+    </div>`;
+
+  document.getElementById('mktCards').innerHTML = poshCard + whatnotCard + etsyCard;
+}
+
+function renderMarketsHistory(rows) {
+  const el = document.getElementById('mktHistoryBody');
+  if (!rows.length) {
+    el.innerHTML = `<div class="mkt-empty">No exports recorded yet.</div>`;
+    return;
+  }
+  const tableRows = rows.map(r => `
+    <tr>
+      <td>${r.date_listed}</td>
+      <td>${r.posh > 0 ? `✓ ${r.posh}` : '—'}</td>
+      <td>${r.whatnot > 0 ? `✓ ${r.whatnot}` : '—'}</td>
+    </tr>`).join('');
+  el.innerHTML = `
+    <table class="mkt-history-table">
+      <thead><tr><th>Date</th><th>Poshmark</th><th>Whatnot</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>`;
+}
+
+function renderMarketsErrors(errorItems) {
+  const el = document.getElementById('mktErrorBody');
+  if (!errorItems.length) {
+    el.innerHTML = `<div class="mkt-empty">No errors — all clear.</div>`;
+    return;
+  }
+  el.innerHTML = errorItems.map(item => `
+    <div class="mkt-error-row">
+      <span class="mkt-error-id">#${item.id}</span>
+      <span class="mkt-error-title">${item.title || 'Untitled'}</span>
+      <span class="mkt-error-link" onclick="switchView('photos')">View →</span>
+    </div>`).join('');
+}
+
+function saveCouponNote() {
+  const note = document.getElementById('mktCouponText').value.trim();
+  localStorage.setItem('mkt_coupon_note', note);
+  toast('Coupon note saved', 'success');
 }

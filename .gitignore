@@ -50,8 +50,8 @@ input/
 .env.test.local
 .env.production.local
 
-# Session notes (contain API patterns and internal details)
-claude*.md
+# Session notes (contain API patterns and internal details — dated files only)
+claude[0-9]*.md
 
 # Local assets and binaries
 branding/

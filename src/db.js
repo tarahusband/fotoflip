@@ -3,7 +3,9 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-const DB_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'fotoflip');
+const DB_DIR = process.env.DATA_DIR
+  ? path.join(process.env.DATA_DIR)
+  : path.join(os.homedir(), 'Library', 'Application Support', 'fotoflip');
 const DB_PATH = path.join(DB_DIR, 'fotoflip.db');
 
 let db;

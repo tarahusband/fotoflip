@@ -186,6 +186,55 @@ describe('Weight fields — round-trip', () => {
   });
 });
 
+describe('Dashboard endpoint', () => {
+  test('GET /api/dashboard returns 200 with required shape', async () => {
+    const { status, body } = await api('/api/dashboard');
+    assert.equal(status, 200);
+    assert.ok(typeof body === 'object', 'Body should be an object');
+    assert.ok('stats' in body, 'Missing stats');
+    assert.ok('recentImports' in body, 'Missing recentImports');
+    assert.ok('recentActivity' in body, 'Missing recentActivity');
+  });
+
+  test('Dashboard stats.total matches /api/inventory/stats', async () => {
+    const [dash, inv] = await Promise.all([
+      api('/api/dashboard'),
+      api('/api/inventory/stats'),
+    ]);
+    assert.equal(dash.body.stats.total, inv.body.total, 'Total counts should match');
+  });
+
+  test('recentImports is array of max 3', async () => {
+    const { body } = await api('/api/dashboard');
+    assert.ok(Array.isArray(body.recentImports), 'recentImports should be array');
+    assert.ok(body.recentImports.length <= 3, `Should return at most 3, got ${body.recentImports.length}`);
+  });
+
+  test('recentImports entries have required fields', async () => {
+    const { body } = await api('/api/dashboard');
+    for (const imp of body.recentImports) {
+      assert.ok('box' in imp, 'Import entry missing box');
+      assert.ok('count' in imp, 'Import entry missing count');
+      assert.ok('latestDate' in imp, 'Import entry missing latestDate');
+      assert.ok(Array.isArray(imp.thumbs), 'Import entry thumbs should be array');
+    }
+  });
+
+  test('recentActivity is array of max 5', async () => {
+    const { body } = await api('/api/dashboard');
+    assert.ok(Array.isArray(body.recentActivity), 'recentActivity should be array');
+    assert.ok(body.recentActivity.length <= 5, `Should return at most 5, got ${body.recentActivity.length}`);
+  });
+
+  test('Dashboard stat counts are non-negative integers', async () => {
+    const { body } = await api('/api/dashboard');
+    const { total, ready, listed, sold, shipped } = body.stats;
+    for (const [key, val] of Object.entries({ total, ready, listed, sold, shipped })) {
+      assert.ok(Number.isInteger(val) && val >= 0, `stats.${key} should be non-negative integer, got ${val}`);
+    }
+  });
+});
+
 describe('Bundle label — 1080x1080 output', () => {
   test('Generated labeled image is a valid JPEG', async () => {
     const items = await getItems();
