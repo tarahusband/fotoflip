@@ -35,12 +35,28 @@ function switchView(view) {
   if (view === 'markets') loadMarkets();
 }
 
+// ── Auth ──────────────────────────────────────────────────────────────────────
+async function loadCurrentUser() {
+  try {
+    const user = await apiFetch('/auth/me');
+    const el = document.getElementById('navUser');
+    if (!el) return;
+    el.innerHTML = `
+      ${user.picture ? `<img class="nav-user-pic" src="${user.picture}" referrerpolicy="no-referrer">` : ''}
+      <span class="nav-user-name">${user.name || user.email}</span>
+      <button class="nav-logout" onclick="location.href='/auth/logout'" title="Sign out">↪</button>`;
+  } catch (e) {
+    if (e.message.includes('authenticated')) location.href = '/login';
+  }
+}
+
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 async function apiFetch(path, opts = {}) {
   const res = await fetch(API + path, {
     headers: { 'Content-Type': 'application/json', ...opts.headers },
     ...opts,
   });
+  if (res.status === 401) { location.href = '/login'; return; }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || res.statusText);
@@ -1310,6 +1326,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderInventoryTable();
   });
 
+  loadCurrentUser();
   checkMakeStatus();
   loadItems();
   setInterval(loadItems, 10000);

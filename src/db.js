@@ -56,6 +56,15 @@ function initDb() {
     );
 
 
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      google_id TEXT UNIQUE NOT NULL,
+      email TEXT NOT NULL,
+      name TEXT,
+      picture TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(status);
   `);
 
@@ -78,6 +87,10 @@ function initDb() {
   if (!cols.includes('poshmark_exported'))  db.exec(`ALTER TABLE items ADD COLUMN poshmark_exported INTEGER DEFAULT 0`);
   if (!cols.includes('whatnot_exported'))   db.exec(`ALTER TABLE items ADD COLUMN whatnot_exported INTEGER DEFAULT 0`);
   if (!cols.includes('etsy_exported'))      db.exec(`ALTER TABLE items ADD COLUMN etsy_exported INTEGER DEFAULT 0`);
+  if (!cols.includes('user_id'))            db.exec(`ALTER TABLE items ADD COLUMN user_id INTEGER REFERENCES users(id)`);
+
+  const photoCols = db.pragma('table_info(photos)').map(c => c.name);
+  if (!photoCols.includes('user_id'))       db.exec(`ALTER TABLE photos ADD COLUMN user_id INTEGER REFERENCES users(id)`);
 
   return db;
 }

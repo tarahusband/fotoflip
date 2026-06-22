@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const session = require('express-session');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
@@ -8,6 +9,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const { getDb, initDb } = require('./src/db');
 const { processItem } = require('./src/processor');
+const { setupAuth, requireAuth, getUserId } = require('./src/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -24,6 +26,21 @@ const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
 app.use(cors());
 app.use(express.json());
+
+// Auth setup (must come before static + routes)
+if (process.env.GOOGLE_CLIENT_ID) {
+  setupAuth(app, session);
+}
+
+// Login page — public, no auth required
+app.get('/login', (req, res) => {
+  if (process.env.GOOGLE_CLIENT_ID && req.isAuthenticated?.()) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// All other routes require auth when GOOGLE_CLIENT_ID is set
+app.use(requireAuth);
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOAD_DIR));
 app.use('/processed', express.static(PROCESSED_DIR));
@@ -32,12 +49,13 @@ app.use('/processed', express.static(PROCESSED_DIR));
 
 app.post('/api/photos/upload', upload.array('photos'), async (req, res) => {
   const db = getDb();
+  const userId = getUserId(req);
   const photos = [];
 
   for (const file of req.files) {
     const result = db
-      .prepare(`INSERT INTO photos (path, name, size, status, created_at) VALUES (?, ?, ?, 'pending', datetime('now'))`)
-      .run(file.path, file.originalname, file.size);
+      .prepare(`INSERT INTO photos (path, name, size, status, created_at, user_id) VALUES (?, ?, ?, 'pending', datetime('now'), ?)`)
+      .run(file.path, file.originalname, file.size, userId);
 
     photos.push({
       id: result.lastInsertRowid,
@@ -53,15 +71,24 @@ app.post('/api/photos/upload', upload.array('photos'), async (req, res) => {
 
 app.get('/api/photos', (req, res) => {
   const db = getDb();
-  res.json(db.prepare(`SELECT * FROM photos ORDER BY created_at DESC`).all());
+  const userId = getUserId(req);
+  const query = userId
+    ? `SELECT * FROM photos WHERE user_id = ? ORDER BY created_at DESC`
+    : `SELECT * FROM photos ORDER BY created_at DESC`;
+  res.json(userId ? db.prepare(query).all(userId) : db.prepare(query).all());
 });
 
 // ── Items ────────────────────────────────────────────────────────────────────
 
 app.get('/api/items', (req, res) => {
   const db = getDb();
-  const items = db.prepare(`SELECT * FROM items ORDER BY created_at DESC`).all();
-  const photos = db.prepare(`SELECT * FROM photos`).all();
+  const userId = getUserId(req);
+  const items = userId
+    ? db.prepare(`SELECT * FROM items WHERE user_id = ? ORDER BY created_at DESC`).all(userId)
+    : db.prepare(`SELECT * FROM items ORDER BY created_at DESC`).all();
+  const photos = userId
+    ? db.prepare(`SELECT * FROM photos WHERE user_id = ?`).all(userId)
+    : db.prepare(`SELECT * FROM photos`).all();
   const photoMap = Object.fromEntries(photos.map((p) => [p.id, p]));
 
   res.json(items.map((item) => ({
@@ -73,6 +100,7 @@ app.get('/api/items', (req, res) => {
 
 app.post('/api/items', async (req, res) => {
   const db = getDb();
+  const userId = getUserId(req);
   const { photoIds, purchaseDate } = req.body;
 
   if (!photoIds || !photoIds.length) {
@@ -90,8 +118,8 @@ app.post('/api/items', async (req, res) => {
   const hint = req.body.hint || '';
 
   const result = db
-    .prepare(`INSERT INTO items (status, purchase_date, photo_ids, processing_status, is_bundle, bundle_type, bundle_count, weight, weight_unit, created_at) VALUES ('Flip', ?, ?, 'review', ?, ?, ?, ?, ?, datetime('now'))`)
-    .run(date, JSON.stringify(photoIds), isBundle, bundleType, bundleCount, weight, weightUnit);
+    .prepare(`INSERT INTO items (status, purchase_date, photo_ids, processing_status, is_bundle, bundle_type, bundle_count, weight, weight_unit, created_at, user_id) VALUES ('Flip', ?, ?, 'review', ?, ?, ?, ?, ?, datetime('now'), ?)`)
+    .run(date, JSON.stringify(photoIds), isBundle, bundleType, bundleCount, weight, weightUnit, userId);
 
   const itemId = result.lastInsertRowid;
 
