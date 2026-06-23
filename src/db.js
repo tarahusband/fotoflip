@@ -62,10 +62,42 @@ function initDb() {
       email TEXT NOT NULL,
       name TEXT,
       picture TEXT,
+      role TEXT DEFAULT 'user',
+      onboarding_complete INTEGER DEFAULT 0,
+      last_login_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id),
+      business_name TEXT DEFAULT '',
+      seller_handle TEXT DEFAULT '',
+      default_listing_style TEXT DEFAULT 'studio',
+      default_condition_notes TEXT DEFAULT '',
+      shipping_zip TEXT DEFAULT '',
+      timezone TEXT DEFAULT 'America/New_York',
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS listings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER REFERENCES users(id),
+      item_id INTEGER NOT NULL REFERENCES items(id),
+      platform TEXT NOT NULL,
+      status TEXT DEFAULT 'draft',
+      price REAL,
+      platform_listing_id TEXT,
+      published_at TEXT,
+      sold_at TEXT,
+      source TEXT DEFAULT 'manual',
+      error_message TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_item_platform ON listings(item_id, platform);
     CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(status);
+    CREATE INDEX IF NOT EXISTS idx_listings_item ON listings(item_id);
+    CREATE INDEX IF NOT EXISTS idx_listings_user ON listings(user_id);
   `);
 
   // drop obsolete tables
@@ -92,7 +124,45 @@ function initDb() {
   const photoCols = db.pragma('table_info(photos)').map(c => c.name);
   if (!photoCols.includes('user_id'))       db.exec(`ALTER TABLE photos ADD COLUMN user_id INTEGER REFERENCES users(id)`);
 
+  const userCols = db.pragma('table_info(users)').map(c => c.name);
+  if (!userCols.includes('role'))               db.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'`);
+  if (!userCols.includes('onboarding_complete'))db.exec(`ALTER TABLE users ADD COLUMN onboarding_complete INTEGER DEFAULT 0`);
+  if (!userCols.includes('last_login_at'))      db.exec(`ALTER TABLE users ADD COLUMN last_login_at TEXT`);
+
+  // Backfill listings table from legacy export flags (run once — skips existing rows)
+  backfillListings(db);
+
   return db;
+}
+
+function backfillListings(db) {
+  const statusMap = s => ['sold','shipped'].includes(s) ? 'sold' : 'published';
+
+  const poshItems = db.prepare(`
+    SELECT id, user_id, inv_status, date_listed FROM items
+    WHERE poshmark_exported = 1
+    AND id NOT IN (SELECT item_id FROM listings WHERE platform = 'poshmark')
+  `).all();
+
+  const whatnotItems = db.prepare(`
+    SELECT id, user_id, inv_status, date_listed FROM items
+    WHERE whatnot_exported = 1
+    AND id NOT IN (SELECT item_id FROM listings WHERE platform = 'whatnot')
+  `).all();
+
+  const insert = db.prepare(`
+    INSERT INTO listings (user_id, item_id, platform, status, published_at, source)
+    VALUES (?, ?, ?, ?, ?, 'backfilled')
+  `);
+
+  const insertMany = db.transaction((rows, platform) => {
+    for (const row of rows) {
+      insert.run(row.user_id, row.id, platform, statusMap(row.inv_status), row.date_listed);
+    }
+  });
+
+  insertMany(poshItems, 'poshmark');
+  insertMany(whatnotItems, 'whatnot');
 }
 
 module.exports = { getDb, initDb, DB_PATH };

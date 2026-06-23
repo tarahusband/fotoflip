@@ -23,12 +23,29 @@ function setupAuth(app, session) {
   }, (accessToken, refreshToken, profile, done) => {
     const db = getDb();
     const email = profile.emails?.[0]?.value || '';
-    const existing = db.prepare(`SELECT * FROM users WHERE google_id = ?`).get(profile.id);
-    if (existing) return done(null, existing);
-    const result = db.prepare(
-      `INSERT INTO users (google_id, email, name, picture) VALUES (?, ?, ?, ?)`
-    ).run(profile.id, email, profile.displayName, profile.photos?.[0]?.value || '');
-    const user = db.prepare(`SELECT * FROM users WHERE id = ?`).get(result.lastInsertRowid);
+    const isAdmin = process.env.ADMIN_EMAIL && email === process.env.ADMIN_EMAIL;
+
+    let user = db.prepare(`SELECT * FROM users WHERE google_id = ?`).get(profile.id);
+
+    if (!user) {
+      const role = isAdmin ? 'admin' : 'user';
+      const result = db.prepare(
+        `INSERT INTO users (google_id, email, name, picture, role) VALUES (?, ?, ?, ?, ?)`
+      ).run(profile.id, email, profile.displayName, profile.photos?.[0]?.value || '', role);
+      user = db.prepare(`SELECT * FROM users WHERE id = ?`).get(result.lastInsertRowid);
+    }
+
+    // Update last login
+    db.prepare(`UPDATE users SET last_login_at = datetime('now') WHERE id = ?`).run(user.id);
+
+    // Admin claims all NULL user_id records on first login
+    if (user.role === 'admin') {
+      db.prepare(`UPDATE items  SET user_id = ? WHERE user_id IS NULL`).run(user.id);
+      db.prepare(`UPDATE photos SET user_id = ? WHERE user_id IS NULL`).run(user.id);
+      db.prepare(`UPDATE listings SET user_id = ? WHERE user_id IS NULL`).run(user.id);
+    }
+
+    user = db.prepare(`SELECT * FROM users WHERE id = ?`).get(user.id);
     done(null, user);
   }));
 
