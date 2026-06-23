@@ -453,6 +453,19 @@ app.get('/api/export/whatnot', async (req, res) => {
 
   const today = new Date().toISOString().slice(0,10);
   const csv = HEADERS.join(',') + '\r\n' + rows.join('\r\n') + '\r\n';
+
+  // Write to listings table
+  const userId = getUserId(req);
+  const upsertListing = db.prepare(`
+    INSERT INTO listings (user_id, item_id, platform, status, published_at, source)
+    VALUES (?, ?, 'whatnot', 'published', ?, 'manual')
+    ON CONFLICT(item_id, platform) DO UPDATE SET status='published', published_at=excluded.published_at
+  `);
+  try {
+    const insertAll = db.transaction(() => { for (const item of items) upsertListing.run(userId, item.id, today); });
+    insertAll();
+  } catch (_) {}
+
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="whatnot-bulk-${today}.csv"`);
   res.setHeader('X-Export-Item-Ids', JSON.stringify(items.map(i => i.id)));
@@ -802,6 +815,19 @@ app.get('/api/export/poshmark', async (req, res) => {
 
   const today = new Date().toISOString().slice(0,10);
   const csv = [POSHMARK_HEADERS.join(','), ...rows].join('\r\n') + '\r\n';
+
+  // Write to listings table
+  const userId = getUserId(req);
+  const upsertListing = db.prepare(`
+    INSERT INTO listings (user_id, item_id, platform, status, published_at, source)
+    VALUES (?, ?, 'poshmark', 'published', ?, 'manual')
+    ON CONFLICT(item_id, platform) DO UPDATE SET status='published', published_at=excluded.published_at
+  `);
+  try {
+    const insertAll = db.transaction(() => { for (const item of items) upsertListing.run(userId, item.id, today); });
+    insertAll();
+  } catch (_) {}
+
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="poshmark-bulk-${today}.csv"`);
   res.setHeader('X-Export-Item-Ids', JSON.stringify(items.map(i => i.id)));
@@ -1177,17 +1203,35 @@ function toPublicUrl(filePath) {
 
 app.get('/api/dashboard', (req, res) => {
   const db = getDb();
+  const userId = getUserId(req);
+  const userFilter = userId ? `WHERE user_id = ${userId}` : `WHERE 1=1`;
+  const userAnd    = userId ? `AND user_id = ${userId}` : '';
 
   const stats = {
-    total:   db.prepare(`SELECT COUNT(*) as n FROM items`).get().n,
-    ready:   db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'ready'`).get().n,
-    listed:  db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'listed'`).get().n,
-    sold:    db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'sold'`).get().n,
-    shipped: db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'shipped'`).get().n,
+    total:      db.prepare(`SELECT COUNT(*) as n FROM items ${userFilter}`).get().n,
+    ready:      db.prepare(`SELECT COUNT(*) as n FROM items ${userFilter} AND inv_status = 'ready'`.replace('WHERE 1=1 AND', 'WHERE').replace('WHERE user_id', 'WHERE user_id')).get().n,
+    listed:     db.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'published' ${userAnd}`).get().n,
+    sold:       db.prepare(`SELECT COUNT(*) as n FROM listings WHERE status = 'sold' ${userAnd}`).get().n,
+    shipped:    db.prepare(`SELECT COUNT(*) as n FROM items ${userFilter} AND inv_status = 'shipped'`.replace('WHERE 1=1 AND', 'WHERE')).get().n,
+    platforms:  db.prepare(`SELECT COUNT(DISTINCT platform) as n FROM listings WHERE status = 'published' ${userAnd}`).get().n,
   };
 
-  // Load last 100 items + their first photos to derive recent imports
-  const recentItems = db.prepare(`SELECT * FROM items ORDER BY created_at DESC LIMIT 100`).all();
+  const makeUrl = db.prepare(`SELECT value FROM settings WHERE key='make_webhook_url'`).get()?.value || null;
+  const platforms = {
+    poshmark: { connected: true, count: db.prepare(`SELECT COUNT(*) as n FROM listings WHERE platform='poshmark' AND status='published' ${userAnd}`).get().n },
+    whatnot:  { connected: true, count: db.prepare(`SELECT COUNT(*) as n FROM listings WHERE platform='whatnot'  AND status='published' ${userAnd}`).get().n },
+    etsy:     { connected: !!makeUrl },
+  };
+
+  // Empty state for new users
+  if (stats.total === 0) {
+    return res.json({ stats, recentImports: [], recentActivity: [], draftQueue: [], platforms, isEmpty: true });
+  }
+
+  // Load last 100 items scoped to user
+  const recentItems = userId
+    ? db.prepare(`SELECT * FROM items WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`).all(userId)
+    : db.prepare(`SELECT * FROM items ORDER BY created_at DESC LIMIT 100`).all();
   const firstPhotoIds = [...new Set(
     recentItems.map(i => { try { return JSON.parse(i.photo_ids || '[]')[0]; } catch { return null; } }).filter(Boolean)
   )];
@@ -1233,10 +1277,27 @@ app.get('/api/dashboard', (req, res) => {
   if (poshCount && latestExport) activity.push({ type: 'poshmark', label: `Poshmark CSV generated (${poshCount} item${poshCount !== 1 ? 's' : ''})`, date: latestExport.date_listed });
   if (whatCount && latestExport) activity.push({ type: 'whatnot', label: `Whatnot CSV generated (${whatCount} item${whatCount !== 1 ? 's' : ''})`, date: latestExport.date_listed });
 
+  // Draft queue — items needing attention
+  const draftRows = userId
+    ? db.prepare(`SELECT * FROM items WHERE user_id = ? AND inv_status = 'draft' ORDER BY created_at DESC LIMIT 5`).all(userId)
+    : db.prepare(`SELECT * FROM items WHERE inv_status = 'draft' ORDER BY created_at DESC LIMIT 5`).all();
+  const draftFirstIds = draftRows.map(i => { try { return JSON.parse(i.photo_ids||'[]')[0]; } catch { return null; } }).filter(Boolean);
+  const draftPhotoMap = draftFirstIds.length
+    ? Object.fromEntries(db.prepare(`SELECT * FROM photos WHERE id IN (${draftFirstIds.map(()=>'?').join(',')})`).all(...draftFirstIds).map(p => [p.id, p]))
+    : {};
+  const draftQueue = draftRows.map(item => {
+    const firstId = JSON.parse(item.photo_ids||'[]')[0];
+    const photo = firstId ? draftPhotoMap[firstId] : null;
+    const meta = photo?.metadata ? JSON.parse(photo.metadata) : {};
+    return { id: item.id, sku: item.sku, title: meta.title || 'Untitled', thumb: toPublicUrl(photo?.processed_path || photo?.path) || null, created_at: item.created_at };
+  });
+
   res.json({
     stats,
     recentImports,
     recentActivity: activity.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5),
+    draftQueue,
+    platforms,
   });
 });
 
@@ -1395,7 +1456,102 @@ app.put('/api/inventory/bulk', (req, res) => {
   const placeholders = ids.map(() => '?').join(',');
 
   db.prepare(`UPDATE items SET ${setClauses} WHERE id IN (${placeholders})`).run(...setValues, ...ids);
+
+  // Propagate sold/shipped to listings table
+  const newStatus = fields.inv_status;
+  if (newStatus === 'sold' || newStatus === 'shipped') {
+    const soldAt = fields.date_sold || fields.date_shipped || new Date().toISOString().slice(0,10);
+    const listingPlaceholders = ids.map(() => '?').join(',');
+    db.prepare(`UPDATE listings SET status = 'sold', sold_at = ? WHERE item_id IN (${listingPlaceholders})`)
+      .run(soldAt, ...ids);
+  }
+
   res.json({ success: true, updated: ids.length });
+});
+
+// ── Listings API ──────────────────────────────────────────────────────────────
+
+app.get('/api/listings', (req, res) => {
+  const db = getDb();
+  const userId = getUserId(req);
+  const { platform, status } = req.query;
+  let query = `SELECT l.*, i.photo_ids FROM listings l JOIN items i ON i.id = l.item_id WHERE 1=1`;
+  const params = [];
+  if (userId) { query += ` AND l.user_id = ?`; params.push(userId); }
+  if (platform) { query += ` AND l.platform = ?`; params.push(platform); }
+  if (status)   { query += ` AND l.status = ?`;   params.push(status); }
+  query += ` ORDER BY l.created_at DESC`;
+  res.json(db.prepare(query).all(...params));
+});
+
+app.post('/api/listings', (req, res) => {
+  const db = getDb();
+  const userId = getUserId(req);
+  const { item_id, platform, status, price, published_at, source } = req.body;
+  if (!item_id || !platform) return res.status(400).json({ error: '🌸 item_id and platform are required' });
+  const existing = db.prepare(`SELECT id FROM listings WHERE item_id = ? AND platform = ?`).get(item_id, platform);
+  if (existing) {
+    db.prepare(`UPDATE listings SET status = ?, price = ?, published_at = ? WHERE id = ?`)
+      .run(status || 'published', price, published_at, existing.id);
+    return res.json({ id: existing.id, updated: true });
+  }
+  const result = db.prepare(
+    `INSERT INTO listings (user_id, item_id, platform, status, price, published_at, source) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(userId, item_id, platform, status || 'published', price, published_at, source || 'manual');
+  res.json({ id: result.lastInsertRowid, created: true });
+});
+
+app.put('/api/listings/:id', (req, res) => {
+  const db = getDb();
+  const allowed = ['status', 'price', 'platform_listing_id', 'published_at', 'sold_at', 'error_message'];
+  const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
+  if (!updates.length) return res.status(400).json({ error: '🌸 No valid fields to update' });
+  const setClauses = updates.map(([k]) => `${k} = ?`).join(', ');
+  db.prepare(`UPDATE listings SET ${setClauses} WHERE id = ?`).run(...updates.map(([,v]) => v), req.params.id);
+  res.json({ success: true });
+});
+
+// When item is marked sold/shipped, propagate to all its listings
+app.post('/api/items/:id/sold', (req, res) => {
+  const db = getDb();
+  const { date_sold, date_shipped } = req.body;
+  const inv_status = date_shipped ? 'shipped' : 'sold';
+  db.prepare(`UPDATE items SET inv_status = ?, date_sold = ?, date_shipped = ? WHERE id = ?`)
+    .run(inv_status, date_sold || null, date_shipped || null, req.params.id);
+  db.prepare(`UPDATE listings SET status = 'sold', sold_at = ? WHERE item_id = ?`)
+    .run(date_sold || date_shipped, req.params.id);
+  res.json({ success: true });
+});
+
+// ── User Profile API ───────────────────────────────────────────────────────────
+
+app.get('/api/profile', (req, res) => {
+  const db = getDb();
+  const userId = getUserId(req);
+  if (!userId) return res.json({});
+  const profile = db.prepare(`SELECT * FROM user_profiles WHERE user_id = ?`).get(userId);
+  res.json(profile || { user_id: userId });
+});
+
+app.put('/api/profile', (req, res) => {
+  const db = getDb();
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: '🌸 Not authenticated' });
+  const allowed = ['business_name','seller_handle','default_listing_style','default_condition_notes','shipping_zip','timezone'];
+  const fields = Object.entries(req.body).filter(([k]) => allowed.includes(k));
+  if (!fields.length) return res.status(400).json({ error: '🌸 No valid fields' });
+  const existing = db.prepare(`SELECT user_id FROM user_profiles WHERE user_id = ?`).get(userId);
+  if (existing) {
+    const setClauses = fields.map(([k]) => `${k} = ?`).join(', ');
+    db.prepare(`UPDATE user_profiles SET ${setClauses}, updated_at = datetime('now') WHERE user_id = ?`)
+      .run(...fields.map(([,v]) => v), userId);
+  } else {
+    const keys = ['user_id', ...fields.map(([k]) => k)].join(', ');
+    const vals = '?, '.repeat(fields.length + 1).slice(0, -2);
+    db.prepare(`INSERT INTO user_profiles (${keys}) VALUES (${vals})`)
+      .run(userId, ...fields.map(([,v]) => v));
+  }
+  res.json({ success: true });
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

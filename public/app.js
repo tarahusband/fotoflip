@@ -27,12 +27,14 @@ function switchView(view) {
   document.getElementById('viewPhotos').classList.toggle('hidden', view !== 'photos');
   document.getElementById('viewInventory').classList.toggle('hidden', view !== 'inventory');
   document.getElementById('viewMarkets').classList.toggle('hidden', view !== 'markets');
+  document.getElementById('viewSettings').classList.toggle('hidden', view !== 'settings');
   document.querySelectorAll('.nav-item').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.view === view)
   );
   if (view === 'inventory') loadInventory();
   if (view === 'home') loadDashboard();
   if (view === 'markets') loadMarkets();
+  if (view === 'settings') loadSettings();
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -1553,14 +1555,95 @@ async function invBulkArchive() {
 async function loadDashboard() {
   try {
     const data = await apiFetch('/api/dashboard');
+    if (data.isEmpty) {
+      renderOnboarding();
+      return;
+    }
     renderDashboardKpi(data.stats);
     renderDashboardActions(data.stats);
     renderDashboardImports(data.recentImports);
     renderDashboardActivity(data.recentActivity);
+    renderDashboardDraftQueue(data.draftQueue || []);
+    renderDashboardPlatforms(data.platforms || {});
   } catch (e) {
     document.getElementById('dashKpi').innerHTML =
       `<p style="color:var(--red)">🌸 Failed to load dashboard: ${e.message}</p>`;
   }
+}
+
+function renderOnboarding() {
+  const el = document.getElementById('dashContainer');
+  el.innerHTML = `
+    <div class="onboarding">
+      <div class="onboarding-icon">📦</div>
+      <h1 class="onboarding-title">Welcome to FotoFlip</h1>
+      <p class="onboarding-sub">You're all set. Let's get your first items in.</p>
+      <div class="onboarding-steps">
+        <div class="onboarding-step" onclick="openImport()">
+          <div class="onboarding-step-icon">📥</div>
+          <div class="onboarding-step-title">Import Photos</div>
+          <div class="onboarding-step-desc">Add your first batch of items to get started</div>
+          <button class="btn btn-primary onboarding-step-btn">Start Importing</button>
+        </div>
+        <div class="onboarding-step" onclick="switchView('settings')">
+          <div class="onboarding-step-icon">👤</div>
+          <div class="onboarding-step-title">Complete Profile</div>
+          <div class="onboarding-step-desc">Add your seller handle and shipping details</div>
+          <button class="btn btn-secondary onboarding-step-btn">Set Up Profile</button>
+        </div>
+        <div class="onboarding-step" onclick="switchView('markets')">
+          <div class="onboarding-step-icon">🛍</div>
+          <div class="onboarding-step-title">Connect a Platform</div>
+          <div class="onboarding-step-desc">Export to Poshmark, Whatnot, or Etsy</div>
+          <button class="btn btn-secondary onboarding-step-btn">View Markets</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderDashboardDraftQueue(drafts) {
+  const lower = document.getElementById('dashBodyLower');
+  const el = document.getElementById('dashDraftQueue');
+  if (!drafts.length) { el.innerHTML = ''; return; }
+  lower.classList.remove('hidden');
+  el.innerHTML = `
+    <div class="dash-card-title">Draft Queue <span class="dash-badge">${drafts.length}</span></div>
+    <div class="dash-draft-list">
+      ${drafts.map(d => `
+        <div class="dash-draft-item" onclick="switchView('photos')">
+          ${d.thumb ? `<img class="dash-draft-thumb" src="${d.thumb}" loading="lazy">` : `<div class="dash-draft-thumb dash-draft-thumb-empty"></div>`}
+          <div class="dash-draft-meta">
+            <div class="dash-draft-title">${d.title}</div>
+            <div class="dash-draft-sku">${d.sku || `Item #${d.id}`}</div>
+          </div>
+          <span class="status-pill status-review">Draft</span>
+        </div>`).join('')}
+    </div>
+    <button class="btn btn-sm btn-outline" style="margin-top:10px;width:100%" onclick="switchView('inventory')">View all in Inventory →</button>`;
+}
+
+function renderDashboardPlatforms(platforms) {
+  const lower = document.getElementById('dashBodyLower');
+  const el = document.getElementById('dashPlatforms');
+  if (!platforms.poshmark) { el.innerHTML = ''; return; }
+  lower.classList.remove('hidden');
+  const rows = [
+    { key: 'poshmark', label: 'Poshmark',      cls: 'mp-poshmark', letter: 'P', count: platforms.poshmark?.count ?? 0, connected: true },
+    { key: 'whatnot',  label: 'Whatnot',        cls: 'mp-whatnot',  letter: 'W', count: platforms.whatnot?.count  ?? 0, connected: true },
+    { key: 'etsy',     label: 'Etsy via Make',  cls: 'mp-etsy',     letter: 'E', count: null,                           connected: platforms.etsy?.connected },
+  ];
+  el.innerHTML = `
+    <div class="dash-card-title">Connected Platforms</div>
+    <div class="dash-platforms">
+      ${rows.map(r => `
+        <div class="dash-platform-row">
+          <div class="dash-platform-logo ${r.cls}">${r.letter}</div>
+          <div class="dash-platform-name">${r.label}</div>
+          ${r.count !== null ? `<div class="dash-platform-count">${r.count} listed</div>` : ''}
+          <span class="status-pill ${r.connected ? 'status-done' : 'status-pending'}">${r.connected ? 'Ready' : 'Setup'}</span>
+        </div>`).join('')}
+    </div>
+    <button class="btn btn-sm btn-outline" style="margin-top:12px;width:100%" onclick="switchView('markets')">Manage in Markets →</button>`;
 }
 
 function renderDashboardKpi(stats) {
@@ -1812,4 +1895,80 @@ function saveCouponNote() {
   const note = document.getElementById('mktCouponText').value.trim();
   localStorage.setItem('mkt_coupon_note', note);
   toast('Coupon note saved', 'success');
+}
+
+// ── Settings / Profile ────────────────────────────────────────────────────────
+
+async function loadSettings() {
+  try {
+    const profile = await apiFetch('/api/profile');
+    renderProfileForm(profile);
+  } catch (e) {
+    document.getElementById('settingsForm').innerHTML =
+      `<p style="color:var(--red)">🌸 Failed to load profile: ${e.message}</p>`;
+  }
+}
+
+function renderProfileForm(p) {
+  document.getElementById('settingsForm').innerHTML = `
+    <div class="settings-section">
+      <div class="settings-section-title">Seller Profile</div>
+      <div class="settings-field">
+        <label>Business Name</label>
+        <input id="sfBusinessName" type="text" value="${p.business_name || ''}" placeholder="e.g. Boca Closet">
+      </div>
+      <div class="settings-field">
+        <label>Seller Handle</label>
+        <input id="sfSellerHandle" type="text" value="${p.seller_handle || ''}" placeholder="e.g. @bocabelle">
+      </div>
+      <div class="settings-field">
+        <label>Shipping ZIP</label>
+        <input id="sfShippingZip" type="text" value="${p.shipping_zip || ''}" placeholder="e.g. 10001" maxlength="10">
+      </div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-section-title">Listing Defaults</div>
+      <div class="settings-field">
+        <label>Default Listing Style</label>
+        <select id="sfListingStyle">
+          <option value="studio" ${(p.default_listing_style||'studio')==='studio' ? 'selected' : ''}>Studio</option>
+          <option value="lifestyle" ${p.default_listing_style==='lifestyle' ? 'selected' : ''}>Lifestyle</option>
+          <option value="flat" ${p.default_listing_style==='flat' ? 'selected' : ''}>Flat Lay</option>
+        </select>
+      </div>
+      <div class="settings-field">
+        <label>Default Condition Notes</label>
+        <input id="sfConditionNotes" type="text" value="${p.default_condition_notes || ''}" placeholder="e.g. All items cleaned and inspected">
+      </div>
+      <div class="settings-field">
+        <label>Timezone</label>
+        <select id="sfTimezone">
+          <option value="America/New_York"    ${(p.timezone||'America/New_York')==='America/New_York'    ? 'selected' : ''}>Eastern (ET)</option>
+          <option value="America/Chicago"     ${p.timezone==='America/Chicago'    ? 'selected' : ''}>Central (CT)</option>
+          <option value="America/Denver"      ${p.timezone==='America/Denver'     ? 'selected' : ''}>Mountain (MT)</option>
+          <option value="America/Los_Angeles" ${p.timezone==='America/Los_Angeles'? 'selected' : ''}>Pacific (PT)</option>
+        </select>
+      </div>
+    </div>
+    <div class="settings-actions">
+      <button class="btn btn-primary" onclick="saveProfile()">Save Changes</button>
+      <button class="btn btn-outline" onclick="switchView('home')">Cancel</button>
+    </div>`;
+}
+
+async function saveProfile() {
+  const body = {
+    business_name:           document.getElementById('sfBusinessName').value.trim(),
+    seller_handle:           document.getElementById('sfSellerHandle').value.trim(),
+    shipping_zip:            document.getElementById('sfShippingZip').value.trim(),
+    default_listing_style:   document.getElementById('sfListingStyle').value,
+    default_condition_notes: document.getElementById('sfConditionNotes').value.trim(),
+    timezone:                document.getElementById('sfTimezone').value,
+  };
+  try {
+    await apiFetch('/api/profile', { method: 'PUT', body: JSON.stringify(body) });
+    toast('Profile saved', 'success');
+  } catch (e) {
+    toast('🌸 ' + e.message, 'error');
+  }
 }
