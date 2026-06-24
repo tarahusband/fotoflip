@@ -38,6 +38,8 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 // All other routes require auth when GOOGLE_CLIENT_ID is set
 app.use(requireAuth);
 
