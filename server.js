@@ -50,45 +50,6 @@ app.get('/login', (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true, v: '2026-06-25' }));
 
-app.post('/admin/import-items', express.json({ limit: '20mb' }), (req, res) => {
-  if (req.headers['x-admin-secret'] !== process.env.SESSION_SECRET) return res.status(403).json({ error: 'forbidden' });
-  const { items, photos } = req.body;
-  if (!items) return res.status(400).json({ error: 'no items' });
-  const db = getDb();
-  const importAll = db.transaction(() => {
-    if (items && items.length) db.prepare('DELETE FROM items WHERE user_id = 1').run();
-    for (const p of (photos || [])) {
-      db.prepare(`INSERT OR REPLACE INTO photos (id,path,name,size,status,error_message,processed_path,created_at,processed_at,metadata,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(p.id,p.path,p.name,p.size,p.status,p.error_message,p.processed_path,p.created_at,p.processed_at,p.metadata,1);
-    }
-    for (const it of items) {
-      db.prepare(`INSERT OR REPLACE INTO items (id,status,purchase_date,photo_ids,processing_status,sku,created_at,is_bundle,bundle_type,bundle_count,weight,weight_unit,location,inv_status,date_listed,date_sold,date_shipped,poshmark_exported,whatnot_exported,etsy_exported,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(it.id,it.status,it.purchase_date,it.photo_ids,it.processing_status,it.sku,it.created_at,it.is_bundle,it.bundle_type,it.bundle_count,it.weight,it.weight_unit,it.location,it.inv_status,it.date_listed,it.date_sold,it.date_shipped,it.poshmark_exported,it.whatnot_exported,it.etsy_exported,1);
-    }
-  });
-  importAll();
-  db.pragma('wal_checkpoint(TRUNCATE)');
-  const count = db.prepare('SELECT COUNT(*) as n FROM items WHERE user_id = 1').get();
-  res.json({ ok: true, imported: count.n });
-});
-
-app.get('/admin/db-check', (req, res) => {
-  if (req.headers['x-admin-secret'] !== process.env.SESSION_SECRET) return res.status(403).json({ error: 'forbidden' });
-  const db = getDb();
-  const items = db.prepare('SELECT COUNT(*) as count FROM items').get();
-  const users = db.prepare('SELECT id, email, role FROM users').all();
-  const itemsByUser = db.prepare('SELECT user_id, COUNT(*) as count FROM items GROUP BY user_id').all();
-  const dbPath = process.env.DATA_DIR ? `${process.env.DATA_DIR}/fotoflip.db` : 'local';
-  const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all().map(r => r.name);
-  const sessions = tables.includes('sessions') ? db.prepare('SELECT COUNT(*) as count FROM sessions').get() : null;
-  let recentErrors = [];
-  try {
-    const log = fsSyncModule.readFileSync(ERROR_LOG, 'utf8');
-    recentErrors = log.trim().split('\n').slice(-20);
-  } catch {}
-  const photosWithUrl = db.prepare("SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NOT NULL AND cloudinary_url != ''").get();
-  const photosWithoutUrl = db.prepare("SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NULL OR cloudinary_url = ''").get();
-  const sampleBroken = db.prepare("SELECT id, path, processed_path, cloudinary_url FROM photos WHERE (cloudinary_url IS NULL OR cloudinary_url = '') AND processed_path IS NOT NULL LIMIT 3").all();
-  res.json({ dbPath, items, users, itemsByUser, tables, sessions, node_env: process.env.NODE_ENV || 'not set', recentErrors, photosWithUrl, photosWithoutUrl, sampleBroken });
-});
 
 // All other routes require auth when GOOGLE_CLIENT_ID is set
 app.use(requireAuth);
@@ -1245,6 +1206,27 @@ app.post('/api/items/:id/export/make', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// DB diagnostics — admin only (replaces legacy /admin/db-check)
+app.get('/api/admin/db-check', (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: '🌸 Admin only' });
+  const db = getDb();
+  const items = db.prepare('SELECT COUNT(*) as count FROM items').get();
+  const users = db.prepare('SELECT id, email, role FROM users').all();
+  const itemsByUser = db.prepare('SELECT user_id, COUNT(*) as count FROM items GROUP BY user_id').all();
+  const dbPath = process.env.DATA_DIR ? `${process.env.DATA_DIR}/fotoflip.db` : 'local';
+  const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all().map(r => r.name);
+  const sessions = tables.includes('sessions') ? db.prepare('SELECT COUNT(*) as count FROM sessions').get() : null;
+  let recentErrors = [];
+  try {
+    const log = fsSyncModule.readFileSync(ERROR_LOG, 'utf8');
+    recentErrors = log.trim().split('\n').slice(-20);
+  } catch {}
+  const photosWithUrl = db.prepare("SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NOT NULL AND cloudinary_url != ''").get();
+  const photosWithoutUrl = db.prepare("SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NULL OR cloudinary_url = ''").get();
+  const sampleBroken = db.prepare("SELECT id, path, processed_path, cloudinary_url FROM photos WHERE (cloudinary_url IS NULL OR cloudinary_url = '') AND processed_path IS NOT NULL LIMIT 3").all();
+  res.json({ dbPath, items, users, itemsByUser, tables, sessions, node_env: process.env.NODE_ENV || 'not set', recentErrors, photosWithUrl, photosWithoutUrl, sampleBroken });
 });
 
 // DB backup download — admin only
