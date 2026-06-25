@@ -24,6 +24,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 
