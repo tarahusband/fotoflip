@@ -41,6 +41,16 @@ app.get('/login', (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
+app.get('/admin/db-check', (req, res) => {
+  if (req.headers['x-admin-secret'] !== process.env.SESSION_SECRET) return res.status(403).json({ error: 'forbidden' });
+  const db = getDb();
+  const items = db.prepare('SELECT COUNT(*) as count FROM items').get();
+  const users = db.prepare('SELECT id, email, role FROM users').all();
+  const itemsByUser = db.prepare('SELECT user_id, COUNT(*) as count FROM items GROUP BY user_id').all();
+  const dbPath = process.env.DATA_DIR ? `${process.env.DATA_DIR}/fotoflip.db` : 'local';
+  res.json({ dbPath, items, users, itemsByUser });
+});
+
 // All other routes require auth when GOOGLE_CLIENT_ID is set
 app.use(requireAuth);
 
