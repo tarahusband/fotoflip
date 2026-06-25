@@ -7,14 +7,23 @@ const fs = require('fs').promises;
 const cors = require('cors');
 const crypto = require('crypto');
 const sharp = require('sharp');
-const { getDb, initDb } = require('./src/db');
+const { getDb, initDb, closeDb } = require('./src/db');
 const { processItem } = require('./src/processor');
 const { setupAuth, requireAuth, getUserId } = require('./src/auth');
 
+const fsSyncModule = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3456;
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const PROCESSED_DIR = path.join(__dirname, 'processed');
+const LOG_DIR = process.env.DATA_DIR || __dirname;
+const ERROR_LOG = path.join(LOG_DIR, 'error.log');
+
+function logError(context, err) {
+  const line = `[${new Date().toISOString()}] ${context}: ${err?.message || err}\n`;
+  console.error(line.trim());
+  fsSyncModule.appendFileSync(ERROR_LOG, line);
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -26,7 +35,7 @@ const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
 app.set('trust proxy', 1);
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Auth setup (must come before static + routes)
 if (process.env.GOOGLE_CLIENT_ID) {
@@ -41,13 +50,24 @@ app.get('/login', (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-app.post('/admin/upload-db', upload.single('db'), async (req, res) => {
+app.post('/admin/import-items', express.json({ limit: '20mb' }), (req, res) => {
   if (req.headers['x-admin-secret'] !== process.env.SESSION_SECRET) return res.status(403).json({ error: 'forbidden' });
-  if (!req.file) return res.status(400).json({ error: 'no file' });
-  const dbPath = `${process.env.DATA_DIR}/fotoflip.db`;
-  await fs.copyFile(req.file.path, dbPath);
-  await fs.unlink(req.file.path);
-  res.json({ ok: true });
+  const { items, photos } = req.body;
+  if (!items) return res.status(400).json({ error: 'no items' });
+  const db = getDb();
+  const importAll = db.transaction(() => {
+    if (items && items.length) db.prepare('DELETE FROM items WHERE user_id = 1').run();
+    for (const p of (photos || [])) {
+      db.prepare(`INSERT OR REPLACE INTO photos (id,path,name,size,status,error_message,processed_path,created_at,processed_at,metadata,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(p.id,p.path,p.name,p.size,p.status,p.error_message,p.processed_path,p.created_at,p.processed_at,p.metadata,1);
+    }
+    for (const it of items) {
+      db.prepare(`INSERT OR REPLACE INTO items (id,status,purchase_date,photo_ids,processing_status,sku,created_at,is_bundle,bundle_type,bundle_count,weight,weight_unit,location,inv_status,date_listed,date_sold,date_shipped,poshmark_exported,whatnot_exported,etsy_exported,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(it.id,it.status,it.purchase_date,it.photo_ids,it.processing_status,it.sku,it.created_at,it.is_bundle,it.bundle_type,it.bundle_count,it.weight,it.weight_unit,it.location,it.inv_status,it.date_listed,it.date_sold,it.date_shipped,it.poshmark_exported,it.whatnot_exported,it.etsy_exported,1);
+    }
+  });
+  importAll();
+  db.pragma('wal_checkpoint(TRUNCATE)');
+  const count = db.prepare('SELECT COUNT(*) as n FROM items WHERE user_id = 1').get();
+  res.json({ ok: true, imported: count.n });
 });
 
 app.get('/admin/db-check', (req, res) => {
@@ -57,7 +77,14 @@ app.get('/admin/db-check', (req, res) => {
   const users = db.prepare('SELECT id, email, role FROM users').all();
   const itemsByUser = db.prepare('SELECT user_id, COUNT(*) as count FROM items GROUP BY user_id').all();
   const dbPath = process.env.DATA_DIR ? `${process.env.DATA_DIR}/fotoflip.db` : 'local';
-  res.json({ dbPath, items, users, itemsByUser });
+  const tables = db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all().map(r => r.name);
+  const sessions = tables.includes('sessions') ? db.prepare('SELECT COUNT(*) as count FROM sessions').get() : null;
+  let recentErrors = [];
+  try {
+    const log = fsSyncModule.readFileSync(ERROR_LOG, 'utf8');
+    recentErrors = log.trim().split('\n').slice(-20);
+  } catch {}
+  res.json({ dbPath, items, users, itemsByUser, tables, sessions, node_env: process.env.NODE_ENV || 'not set', recentErrors });
 });
 
 // All other routes require auth when GOOGLE_CLIENT_ID is set
@@ -91,13 +118,27 @@ app.post('/api/photos/upload', upload.array('photos'), async (req, res) => {
   res.json({ photos });
 });
 
+function resolvePhotoUrl(photo) {
+  try {
+    const meta = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata) : (photo.metadata || {});
+    if (meta.imgbbUrl) return meta.imgbbUrl;
+  } catch {}
+  if (photo.processed_path) {
+    const part = photo.processed_path.split('/processed/')[1];
+    if (part) return `/processed/${part}`;
+  }
+  const name = (photo.path || '').split('/uploads/')[1] || photo.name;
+  return `/uploads/${name}`;
+}
+
 app.get('/api/photos', (req, res) => {
   const db = getDb();
   const userId = getUserId(req);
   const query = userId
     ? `SELECT * FROM photos WHERE user_id = ? ORDER BY created_at DESC`
     : `SELECT * FROM photos ORDER BY created_at DESC`;
-  res.json(userId ? db.prepare(query).all(userId) : db.prepare(query).all());
+  const rows = userId ? db.prepare(query).all(userId) : db.prepare(query).all();
+  res.json(rows.map(p => ({ ...p, url: resolvePhotoUrl(p) })));
 });
 
 // ── Items ────────────────────────────────────────────────────────────────────
@@ -116,7 +157,7 @@ app.get('/api/items', (req, res) => {
   res.json(items.map((item) => ({
     ...item,
     photoIds: JSON.parse(item.photo_ids || '[]'),
-    photos: JSON.parse(item.photo_ids || '[]').map((id) => photoMap[id]).filter(Boolean),
+    photos: JSON.parse(item.photo_ids || '[]').map((id) => photoMap[id]).filter(Boolean).map(p => ({ ...p, url: resolvePhotoUrl(p) })),
   })));
 });
 
@@ -183,8 +224,10 @@ app.post('/api/items/:id/process', async (req, res) => {
 
   // Fire and forget — client polls for status updates
   res.json({ processing: true });
-  processItem(parseInt(req.params.id), photoIds, PROCESSED_DIR)
-    .catch(err => console.error(`[FotoFlip] Processing error item ${req.params.id}:`, err.message));
+  const itemIdInt = parseInt(req.params.id);
+  processItem(itemIdInt, photoIds, PROCESSED_DIR)
+    .then(() => uploadPhotosToCloudinary(itemIdInt))
+    .catch(err => logError(`Processing item ${req.params.id}`, err));
 });
 
 // Delete item + its photos
@@ -198,6 +241,19 @@ app.delete('/api/items/:id', async (req, res) => {
     const photo = db.prepare(`SELECT * FROM photos WHERE id = ?`).get(photoId);
     if (photo) {
       await fs.unlink(photo.path).catch(() => {});
+      const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
+      if (meta.imgbbUrl && process.env.CLOUDINARY_API_KEY) {
+        const publicId = `fotoflip/item-${req.params.id}`;
+        const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+        const apiKey = process.env.CLOUDINARY_API_KEY;
+        const apiSecret = process.env.CLOUDINARY_API_SECRET;
+        const ts = Math.floor(Date.now() / 1000);
+        const sig = crypto.createHash('sha1').update(`public_id=${publicId}&timestamp=${ts}${apiSecret}`).digest('hex');
+        await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
+          method: 'POST',
+          body: new URLSearchParams({ public_id: publicId, timestamp: ts, api_key: apiKey, signature: sig }),
+        }).catch(() => {});
+      }
       db.prepare(`DELETE FROM photos WHERE id = ?`).run(photoId);
     }
   }
@@ -210,9 +266,12 @@ app.delete('/api/items/:id', async (req, res) => {
 
 app.get('/api/stats', (req, res) => {
   const db = getDb();
-  const total = db.prepare(`SELECT COUNT(*) as n FROM items`).get().n;
-  const flips = db.prepare(`SELECT COUNT(*) as n FROM items WHERE status = 'Flip'`).get().n;
-  const processed = db.prepare(`SELECT COUNT(*) as n FROM items WHERE processing_status = 'done'`).get().n;
+  const userId = getUserId(req);
+  const filter = userId ? 'WHERE user_id = ?' : '';
+  const args = userId ? [userId] : [];
+  const total = db.prepare(`SELECT COUNT(*) as n FROM items ${filter}`).get(...args).n;
+  const flips = db.prepare(`SELECT COUNT(*) as n FROM items WHERE status = 'Flip'${userId ? ' AND user_id = ?' : ''}`).get(...args).n;
+  const processed = db.prepare(`SELECT COUNT(*) as n FROM items WHERE processing_status = 'done'${userId ? ' AND user_id = ?' : ''}`).get(...args).n;
   res.json({ total, flips, processed });
 });
 
@@ -268,10 +327,12 @@ app.put('/api/items/:id/bundle', async (req, res) => {
       const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
       const photoIds = JSON.parse(item.photo_ids || '[]');
       const photo = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
-      if (!photo?.path) return;
+      if (!photo) return;
       const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
+      const imageSource = meta.imgbbUrl || photo.path;
+      if (!imageSource) return;
       const { main, sub } = getBundleLabel(meta, item);
-      const buf = await applyBundleLabel(photo.path, main, sub);
+      const buf = await applyBundleLabel(imageSource, main, sub);
       const labeledPath = path.join(PROCESSED_DIR, `item-${req.params.id}-labeled.jpg`);
       await fs.writeFile(labeledPath, buf);
     } catch (e) {
@@ -635,7 +696,10 @@ async function applyBundleLabel(imagePath, main, sub) {
     ${bubble(1048, 516, 28)} ${bubble(800, 1058, 30)} ${bubble(248, 1066, 14)}
   </svg>`;
 
-  const photoBuffer = await sharp(imagePath)
+  const imageInput = /^https?:\/\//.test(imagePath)
+    ? Buffer.from(await fetch(imagePath).then(r => r.arrayBuffer()))
+    : imagePath;
+  const photoBuffer = await sharp(imageInput)
     .resize(SIZE, SIZE, { fit: 'cover', position: 'centre' })
     .modulate({ brightness: 1.10, saturation: 1.06 })
     .sharpen({ sigma: 0.75, m1: 0.8, m2: 1.8 })
@@ -723,6 +787,43 @@ async function uploadImage(source, itemId) {
   // fallback to GitHub
   const filename = `item-${itemId}-labeled.jpg`;
   return await githubUpload(source, filename);
+}
+
+async function uploadPhotosToCloudinary(itemId) {
+  const db = getDb();
+  const item = db.prepare(`SELECT * FROM items WHERE id = ?`).get(itemId);
+  if (!item) return;
+  const photoIds = JSON.parse(item.photo_ids || '[]');
+
+  for (const photoId of photoIds) {
+    const photo = db.prepare(`SELECT * FROM photos WHERE id = ?`).get(photoId);
+    if (!photo) continue;
+
+    const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
+    if (meta.imgbbUrl) continue; // already uploaded
+
+    const source = photo.processed_path || photo.path;
+    if (!source) {
+      db.prepare(`UPDATE items SET processing_status = 'failed' WHERE id = ?`).run(itemId);
+      db.prepare(`UPDATE photos SET status = 'failed', error_message = ? WHERE id = ?`)
+        .run('🌸 No image file to upload — photo may have been lost in a redeploy', photoId);
+      logError(`uploadPhotosToCloudinary item ${itemId} photo ${photoId}`, new Error('no source path'));
+      return;
+    }
+
+    const imgbbUrl = await uploadImage(source, itemId);
+    if (!imgbbUrl) {
+      db.prepare(`UPDATE items SET processing_status = 'failed' WHERE id = ?`).run(itemId);
+      db.prepare(`UPDATE photos SET status = 'failed', error_message = ? WHERE id = ?`)
+        .run('🌸 Cloudinary upload failed — photo not saved to cloud storage', photoId);
+      logError(`uploadPhotosToCloudinary item ${itemId} photo ${photoId}`, new Error('upload returned empty URL'));
+      return;
+    }
+
+    const updatedMeta = JSON.stringify({ ...meta, imgbbUrl });
+    db.prepare(`UPDATE photos SET metadata = ? WHERE id = ?`).run(updatedMeta, photoId);
+    console.log(`[FotoFlip] Photo ${photoId} (item ${itemId}) saved to cloud: ${imgbbUrl}`);
+  }
 }
 
 const POSHMARK_HEADERS = ['SKU','ProductID (GTIN)','Title','Description','Department','Category','Sub-category','Quantity','Size','Condition','Brand','Color1','Color2','VariantGroupID','VariantType','VariantAttribute','Style Tag1','Style Tag2','Style Tag3','Orig price','Listing price','Shipping Discount','Price Floor Percent','Minimum Price','Availability','Drop time','Other info','Copy Listing?','Update Existing SKU?','NEW SKU','Primary image','Alt image 1','Alt image 2','Alt image 3','Alt image 4','Alt image 5','Alt image 6','Alt image 7','Alt image 8','Alt image 9','Alt image 10','Alt image 11','Alt image 12','Alt image 13','Alt image 14','Alt image 15'];
@@ -1180,10 +1281,11 @@ app.post('/api/admin/regenerate-labels', async (req, res) => {
     try {
       const photoIds = JSON.parse(item.photo_ids || '[]');
       const photo = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
-      if (!photo?.path) { skipped++; continue; }
       const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
+      const imageSource = meta.imgbbUrl || photo.path;
+      if (!imageSource) { skipped++; continue; }
       const { main, sub } = getBundleLabel(meta, item);
-      const buf = await applyBundleLabel(photo.path, main, sub);
+      const buf = await applyBundleLabel(imageSource, main, sub);
       const labeledPath = require('path').join(PROCESSED_DIR, `item-${item.id}-labeled.jpg`);
       await fs.writeFile(labeledPath, buf);
       // Clear Cloudinary cache so it re-uploads on next export
@@ -1576,12 +1678,20 @@ app.put('/api/profile', (req, res) => {
   res.json({ success: true });
 });
 
+// ── Error handler ─────────────────────────────────────────────────────────────
+
+app.use((err, req, res, next) => {
+  logError(`${req.method} ${req.path}`, err);
+  res.status(500).json({ error: '🌸 Server error — check logs' });
+});
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 (async () => {
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
   await fs.mkdir(PROCESSED_DIR, { recursive: true });
-  initDb();
+  const bootDb = initDb();
+  bootDb.pragma('wal_checkpoint(TRUNCATE)');
   app.listen(PORT, () => {
     console.log(`\nFotoFlip running at http://localhost:${PORT}\n`);
   });
