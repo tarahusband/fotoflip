@@ -41,15 +41,6 @@ app.get('/login', (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-app.post('/admin/upload-db', upload.single('db'), async (req, res) => {
-  if (req.headers['x-admin-secret'] !== process.env.SESSION_SECRET) return res.status(403).json({ error: 'forbidden' });
-  if (!req.file) return res.status(400).json({ error: 'no file' });
-  const dbPath = `${process.env.DATA_DIR}/fotoflip.db`;
-  await fs.copyFile(req.file.path, dbPath);
-  await fs.unlink(req.file.path);
-  res.json({ ok: true });
-});
-
 // All other routes require auth when GOOGLE_CLIENT_ID is set
 app.use(requireAuth);
 
