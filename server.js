@@ -1208,6 +1208,27 @@ app.post('/api/items/:id/export/make', async (req, res) => {
   }
 });
 
+// Admin health check — OPS-001
+app.get('/api/admin/health', (req, res) => {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: '🌸 Admin only' });
+  let db_connected = false, items = 0, photos = 0, missing_thumbnails = 0;
+  try {
+    const db = getDb();
+    db_connected = true;
+    items = db.prepare('SELECT COUNT(*) as n FROM items').get().n;
+    photos = db.prepare('SELECT COUNT(*) as n FROM photos').get().n;
+    missing_thumbnails = db.prepare("SELECT COUNT(*) as n FROM photos WHERE cloudinary_url IS NULL OR cloudinary_url = ''").get().n;
+  } catch {}
+  res.json({
+    db_connected,
+    cloudinary_configured: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET),
+    anthropic_configured: !!process.env.ANTHROPIC_API_KEY,
+    items,
+    photos,
+    missing_thumbnails,
+  });
+});
+
 // DB diagnostics — admin only (replaces legacy /admin/db-check)
 app.get('/api/admin/db-check', (req, res) => {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: '🌸 Admin only' });
