@@ -234,28 +234,19 @@ function generateSku(item, meta) {
 }
 
 function photoThumbUrl(photo) {
-  if (!photo) return null;
-  if (photo.processed_path) {
-    const parts = photo.processed_path.split('/processed/');
-    if (parts[1]) return `/processed/${parts[1]}`;
-  }
-  const filePath = photo.path || '';
-  const uploadName = filePath.split('/uploads/').pop() || photo.name;
-  return `/uploads/${uploadName}`;
+  return photo?.url || null;
 }
 
 function originalUrl(photo) {
   if (!photo) return null;
   const filePath = photo.path || '';
-  const uploadName = filePath.split('/uploads/').pop() || photo.name;
-  return `/uploads/${uploadName}`;
+  const uploadName = filePath.split('/uploads/')[1] || photo.name;
+  if (uploadName) return `/uploads/${uploadName}`;
+  return photo?.url || null;
 }
 
 function processedUrl(photo) {
-  if (!photo || !photo.processed_path) return null;
-  const parts = photo.processed_path.split('/processed/');
-  if (parts[1]) return `/processed/${parts[1]}`;
-  return null;
+  return photo?.url || null;
 }
 
 function renderStatusPill(item) {
@@ -406,7 +397,13 @@ async function waitForItem(id, timeoutMs = 120000) {
     await new Promise(r => setTimeout(r, 3000));
     try {
       const item = await apiFetch(`/api/items/${id}`);
-      if (item.processing_status === 'done' || item.processing_status === 'failed') return item;
+      if (item.processing_status === 'done') {
+        const meta = item.photos?.[0]?.metadata;
+        const parsed = typeof meta === 'string' ? JSON.parse(meta || '{}') : (meta || {});
+        if (parsed.ai_unavailable) toast('🌸 AI processing unavailable — item saved. Fill in details manually.', 'error');
+        return item;
+      }
+      if (item.processing_status === 'failed') return item;
     } catch (e) { /* keep polling */ }
   }
 }

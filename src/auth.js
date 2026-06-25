@@ -1,15 +1,18 @@
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const SqliteStore = require('better-sqlite3-session-store')(require('express-session'));
 const { getDb } = require('./db');
 
 function setupAuth(app, session) {
   app.use(session({
+    store: new SqliteStore({ client: getDb() }),
     secret: process.env.SESSION_SECRET || 'fotoflip-dev-secret',
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      secure: !!process.env.APP_URL?.startsWith('https'),
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   }));
 

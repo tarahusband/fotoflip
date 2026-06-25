@@ -22,6 +22,7 @@
     "@anthropic-ai/sdk": "^0.104.2",
     "@imgly/background-removal-node": "^1.4.5",
     "better-sqlite3": "^12.11.1",
+    "better-sqlite3-session-store": "^0.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

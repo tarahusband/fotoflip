@@ -130,12 +130,16 @@ app.post('/api/photos/upload', upload.array('photos'), async (req, res) => {
   res.json({ photos });
 });
 
-function resolvePhotoUrl(photo) {
+function resolvePhotoUrl(photo, itemId) {
   if (photo.cloudinary_url) return photo.cloudinary_url;
   try {
     const meta = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata) : (photo.metadata || {});
     if (meta.imgbbUrl) return meta.imgbbUrl;
   } catch {}
+  // Reconstruct Cloudinary URL for items processed before Cloudinary-first was implemented
+  if (itemId && process.env.CLOUDINARY_CLOUD_NAME) {
+    return `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/image/upload/fotoflip/item-${itemId}.jpg`;
+  }
   if (photo.processed_path) {
     const part = photo.processed_path.split('/processed/')[1];
     if (part) return `/processed/${part}`;
@@ -170,7 +174,7 @@ app.get('/api/items', (req, res) => {
   res.json(items.map((item) => ({
     ...item,
     photoIds: JSON.parse(item.photo_ids || '[]'),
-    photos: JSON.parse(item.photo_ids || '[]').map((id) => photoMap[id]).filter(Boolean).map(p => ({ ...p, url: resolvePhotoUrl(p) })),
+    photos: JSON.parse(item.photo_ids || '[]').map((id) => photoMap[id]).filter(Boolean).map(p => ({ ...p, url: resolvePhotoUrl(p, item.id) })),
   })));
 });
 
@@ -226,7 +230,7 @@ app.get('/api/items/:id', (req, res) => {
   const item = db.prepare(`SELECT * FROM items WHERE id = ?`).get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
   const photoIds = JSON.parse(item.photo_ids || '[]');
-  const photos = photoIds.map((id) => db.prepare(`SELECT * FROM photos WHERE id = ?`).get(id)).filter(Boolean);
+  const photos = photoIds.map((id) => db.prepare(`SELECT * FROM photos WHERE id = ?`).get(id)).filter(Boolean).map(p => ({ ...p, url: resolvePhotoUrl(p, item.id) }));
   res.json({ ...item, photoIds, photos });
 });
 
