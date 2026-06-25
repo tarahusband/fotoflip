@@ -268,22 +268,18 @@ app.delete('/api/items/:id', async (req, res) => {
     const photo = db.prepare(`SELECT * FROM photos WHERE id = ?`).get(photoId);
     if (photo) {
       await fs.unlink(photo.path).catch(() => {});
-      if (photo.cloudinary_url && process.env.CLOUDINARY_API_KEY) {
-        const publicId = `fotoflip/photo-${photoId}`;
-        const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-        const apiKey = process.env.CLOUDINARY_API_KEY;
-        const apiSecret = process.env.CLOUDINARY_API_SECRET;
-        const ts = Math.floor(Date.now() / 1000);
-        const sig = crypto.createHash('sha1').update(`public_id=${publicId}&timestamp=${ts}${apiSecret}`).digest('hex');
-        await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
-          method: 'POST',
-          body: new URLSearchParams({ public_id: publicId, timestamp: ts, api_key: apiKey, signature: sig }),
-        }).catch(() => {});
+      if (photo.cloudinary_url) {
+        await cloudinaryDestroy(photo.cloudinary_url);
       }
       db.prepare(`DELETE FROM photos WHERE id = ?`).run(photoId);
     }
   }
 
+  if (item.bundle_label_url) {
+    await cloudinaryDestroy(item.bundle_label_url);
+  }
+
+  db.prepare(`DELETE FROM listings WHERE item_id = ?`).run(req.params.id);
   db.prepare(`DELETE FROM items WHERE id = ?`).run(req.params.id);
   res.json({ success: true });
 });
@@ -806,6 +802,29 @@ async function cloudinaryUpload(source, tag) {
   } catch (e) {
     console.warn('[FotoFlip] Cloudinary upload failed:', e.message);
     return '';
+  }
+}
+
+async function cloudinaryDestroy(url) {
+  try {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+    if (!cloudName || !apiKey || !apiSecret) return;
+    // Extract public_id from URL: strip host prefix and file extension
+    const match = url.match(/\/image\/upload\/(?:v\d+\/)?(.+?)(?:\.[a-z]+)?$/i);
+    if (!match) { console.warn('[FotoFlip] cloudinaryDestroy: could not parse public_id from', url); return; }
+    const publicId = match[1];
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = crypto.createHash('sha1').update(`public_id=${publicId}&timestamp=${ts}${apiSecret}`).digest('hex');
+    const r = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, {
+      method: 'POST',
+      body: new URLSearchParams({ public_id: publicId, timestamp: ts.toString(), api_key: apiKey, signature: sig }),
+    });
+    const j = await r.json();
+    if (j.result !== 'ok') console.warn('[FotoFlip] Cloudinary destroy unexpected result:', JSON.stringify(j), 'for', publicId);
+  } catch (e) {
+    console.warn('[FotoFlip] Cloudinary destroy failed:', e.message);
   }
 }
 
