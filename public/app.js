@@ -6,6 +6,7 @@ const API = '';
 let items = [];
 let stagedPhotos = [];
 let pollTimer = null;
+let lastItemsHash = '';
 let activeItemId = null;
 let activeTab = 'photo';
 let activeFilter = 'all';
@@ -260,10 +261,14 @@ function renderStatusPill(item) {
 async function loadItems() {
   try {
     items = await apiFetch('/api/items');
-    renderSidebar();
-    if (activeItemId) {
-      const item = items.find(i => i.id === activeItemId);
-      if (item) renderDetail(item);
+    const hash = items.map(i => `${i.id}:${i.processing_status}:${i.inv_status}`).join('|');
+    if (hash !== lastItemsHash) {
+      lastItemsHash = hash;
+      renderSidebar();
+      if (activeItemId) {
+        const item = items.find(i => i.id === activeItemId);
+        if (item) renderDetail(item);
+      }
     }
     scheduleRefreshIfNeeded();
   } catch (e) {
@@ -436,9 +441,9 @@ async function bulkUpdatePhotos() {
       await apiFetch(`/api/items/${id}/process`, { method: 'POST', body: JSON.stringify({}) });
       await waitForItem(id);
     } catch (e) { /* continue to next */ }
-    await loadItems();
   }
   setBulkProgress('');
+  await loadItems();
   toast(`${ids.length} photo${ids.length > 1 ? 's' : ''} processed`, 'success');
 }
 
@@ -450,9 +455,9 @@ async function bulkUpdateDescriptions() {
     try {
       await apiFetch(`/api/items/${id}/listing/generate`, { method: 'POST' });
     } catch (e) { /* continue to next */ }
-    await loadItems();
   }
   setBulkProgress('');
+  await loadItems();
   toast(`${ids.length} description${ids.length > 1 ? 's' : ''} updated`, 'success');
 }
 
@@ -461,13 +466,10 @@ async function bulkMarkReady() {
   let done = 0;
   for (const id of ids) {
     setBulkProgress(`Marking ${++done} of ${ids.length}…`);
-    await apiFetch(`/api/items/${id}`, { method: 'PUT', body: JSON.stringify({ processing_status: 'pending' }) }).catch(() => {});
-    await loadItems();
-    await new Promise(r => setTimeout(r, 300));
     await apiFetch(`/api/items/${id}`, { method: 'PUT', body: JSON.stringify({ processing_status: 'done' }) }).catch(() => {});
-    await loadItems();
   }
   setBulkProgress('');
+  await loadItems();
   toast(`${ids.length} item${ids.length > 1 ? 's' : ''} marked ready`, 'success');
 }
 
@@ -1324,7 +1326,6 @@ document.addEventListener('DOMContentLoaded', () => {
   loadCurrentUser();
   checkMakeStatus();
   loadItems();
-  setInterval(loadItems, 10000);
   switchView('home');
 });
 
