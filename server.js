@@ -346,29 +346,33 @@ app.put('/api/items/:id/bundle', async (req, res) => {
       req.params.id
     );
 
-  res.json({ success: true });
-
+  let bundle_label_url = null;
   if (is_bundle) {
     try {
       const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
       const photoIds = JSON.parse(item.photo_ids || '[]');
       const photo = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
-      if (!photo) return;
-      const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
-      const imageSource = photo.cloudinary_url || meta.imgbbUrl;
-      if (!imageSource) return;
-      const { main, sub } = getBundleLabel(meta, item);
-      const buf = await applyBundleLabel(imageSource, main, sub);
-      const labelUrl = await cloudinaryUpload(buf, `item-${req.params.id}-labeled`);
-      if (labelUrl) {
-        db.prepare('UPDATE items SET bundle_label_url = ? WHERE id = ?').run(labelUrl, req.params.id);
+      if (photo) {
+        const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
+        const imageSource = photo.cloudinary_url || meta.imgbbUrl;
+        if (imageSource) {
+          const { main, sub } = getBundleLabel(meta, item);
+          const buf = await applyBundleLabel(imageSource, main, sub);
+          const labelUrl = await cloudinaryUpload(buf, `item-${req.params.id}-labeled`);
+          if (labelUrl) {
+            db.prepare('UPDATE items SET bundle_label_url = ? WHERE id = ?').run(labelUrl, req.params.id);
+            bundle_label_url = labelUrl;
+          }
+          const labeledPath = path.join(PROCESSED_DIR, `item-${req.params.id}-labeled.jpg`);
+          await fs.writeFile(labeledPath, buf).catch(() => {});
+        }
       }
-      const labeledPath = path.join(PROCESSED_DIR, `item-${req.params.id}-labeled.jpg`);
-      await fs.writeFile(labeledPath, buf).catch(() => {});
     } catch (e) {
       console.warn('[FotoFlip] Bundle label generation failed:', e.message);
     }
   }
+
+  res.json({ success: true, bundle_label_url });
 });
 
 // ── Metadata save ────────────────────────────────────────────────────────────

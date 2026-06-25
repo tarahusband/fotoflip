@@ -688,7 +688,7 @@ async function saveBundleMeta(id) {
   const bundleType = document.getElementById('bundleTypeSelect')?.value || '';
   const bundleCount = parseInt(document.getElementById('bundleCountSelect')?.value) || 0;
   try {
-    await apiFetch(`/api/items/${id}/bundle`, {
+    const data = await apiFetch(`/api/items/${id}/bundle`, {
       method: 'PUT',
       body: JSON.stringify({ is_bundle: isBundle, bundle_type: bundleType, bundle_count: bundleCount }),
     });
@@ -697,6 +697,7 @@ async function saveBundleMeta(id) {
       item.is_bundle = isBundle ? 1 : 0;
       item.bundle_type = bundleType;
       item.bundle_count = bundleCount;
+      if (data?.bundle_label_url) item.bundle_label_url = data.bundle_label_url;
       renderDetail(item);
     }
   } catch (e) { toast('🌸 Bundle save failed: ' + e.message, 'error'); }
