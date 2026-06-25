@@ -102,16 +102,28 @@ app.post('/api/photos/upload', upload.array('photos'), async (req, res) => {
   const photos = [];
 
   for (const file of req.files) {
+    // Insert record first to get the photo ID
     const result = db
       .prepare(`INSERT INTO photos (path, name, size, status, created_at, user_id) VALUES (?, ?, ?, 'pending', datetime('now'), ?)`)
       .run(file.path, file.originalname, file.size, userId);
+    const photoId = result.lastInsertRowid;
+
+    // Upload to Cloudinary immediately — no item created without this
+    const cloudinaryUrl = await cloudinaryUpload(file.path, `photo-${photoId}`);
+    if (!cloudinaryUrl) {
+      db.prepare(`DELETE FROM photos WHERE id = ?`).run(photoId);
+      await fs.unlink(file.path).catch(() => {});
+      return res.status(500).json({ error: '🌸 Failed to save photo to cloud storage — please try again' });
+    }
+
+    db.prepare(`UPDATE photos SET cloudinary_url = ? WHERE id = ?`).run(cloudinaryUrl, photoId);
 
     photos.push({
-      id: result.lastInsertRowid,
+      id: photoId,
       name: file.originalname,
       uploadName: file.filename,
       path: file.path,
-      url: `/uploads/${file.filename}`,
+      url: cloudinaryUrl,
     });
   }
 
@@ -119,6 +131,7 @@ app.post('/api/photos/upload', upload.array('photos'), async (req, res) => {
 });
 
 function resolvePhotoUrl(photo) {
+  if (photo.cloudinary_url) return photo.cloudinary_url;
   try {
     const meta = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata) : (photo.metadata || {});
     if (meta.imgbbUrl) return meta.imgbbUrl;
@@ -167,7 +180,15 @@ app.post('/api/items', async (req, res) => {
   const { photoIds, purchaseDate } = req.body;
 
   if (!photoIds || !photoIds.length) {
-    return res.status(400).json({ error: 'photoIds required' });
+    return res.status(400).json({ error: '🌸 No photos provided' });
+  }
+
+  // Rule: no item without a saved Cloudinary URL
+  for (const photoId of photoIds) {
+    const photo = db.prepare(`SELECT cloudinary_url FROM photos WHERE id = ?`).get(photoId);
+    if (!photo?.cloudinary_url) {
+      return res.status(400).json({ error: '🌸 Photo not saved to cloud — upload may have failed. Please try again.' });
+    }
   }
 
   const date = purchaseDate || new Date().toISOString().slice(0, 10);
@@ -225,8 +246,7 @@ app.post('/api/items/:id/process', async (req, res) => {
   // Fire and forget — client polls for status updates
   res.json({ processing: true });
   const itemIdInt = parseInt(req.params.id);
-  processItem(itemIdInt, photoIds, PROCESSED_DIR)
-    .then(() => uploadPhotosToCloudinary(itemIdInt))
+  processItem(itemIdInt, photoIds, PROCESSED_DIR, cloudinaryUpload)
     .catch(err => logError(`Processing item ${req.params.id}`, err));
 });
 
@@ -241,9 +261,8 @@ app.delete('/api/items/:id', async (req, res) => {
     const photo = db.prepare(`SELECT * FROM photos WHERE id = ?`).get(photoId);
     if (photo) {
       await fs.unlink(photo.path).catch(() => {});
-      const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
-      if (meta.imgbbUrl && process.env.CLOUDINARY_API_KEY) {
-        const publicId = `fotoflip/item-${req.params.id}`;
+      if (photo.cloudinary_url && process.env.CLOUDINARY_API_KEY) {
+        const publicId = `fotoflip/photo-${photoId}`;
         const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
         const apiKey = process.env.CLOUDINARY_API_KEY;
         const apiSecret = process.env.CLOUDINARY_API_SECRET;
@@ -750,7 +769,7 @@ async function githubUpload(source, filename) {
   }
 }
 
-async function cloudinaryUpload(source, itemId) {
+async function cloudinaryUpload(source, tag) {
   try {
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
     const apiKey = process.env.CLOUDINARY_API_KEY;
@@ -758,7 +777,7 @@ async function cloudinaryUpload(source, itemId) {
     if (!cloudName || !apiKey || !apiSecret) return '';
     const imgData = Buffer.isBuffer(source) ? source : await fs.readFile(source);
     const b64 = imgData.toString('base64');
-    const publicId = `fotoflip/item-${itemId}`;
+    const publicId = `fotoflip/${tag}`;
     const timestamp = Math.floor(Date.now() / 1000);
     const str = `overwrite=true&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`;
     const crypto = require('crypto');
@@ -781,50 +800,13 @@ async function cloudinaryUpload(source, itemId) {
   }
 }
 
-async function uploadImage(source, itemId) {
-  const url = await cloudinaryUpload(source, itemId);
+async function uploadImage(source, tag) {
+  const url = await cloudinaryUpload(source, tag);
   if (url) return url;
-  // fallback to GitHub
-  const filename = `item-${itemId}-labeled.jpg`;
+  const filename = `${tag}-labeled.jpg`;
   return await githubUpload(source, filename);
 }
 
-async function uploadPhotosToCloudinary(itemId) {
-  const db = getDb();
-  const item = db.prepare(`SELECT * FROM items WHERE id = ?`).get(itemId);
-  if (!item) return;
-  const photoIds = JSON.parse(item.photo_ids || '[]');
-
-  for (const photoId of photoIds) {
-    const photo = db.prepare(`SELECT * FROM photos WHERE id = ?`).get(photoId);
-    if (!photo) continue;
-
-    const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
-    if (meta.imgbbUrl) continue; // already uploaded
-
-    const source = photo.processed_path || photo.path;
-    if (!source) {
-      db.prepare(`UPDATE items SET processing_status = 'failed' WHERE id = ?`).run(itemId);
-      db.prepare(`UPDATE photos SET status = 'failed', error_message = ? WHERE id = ?`)
-        .run('🌸 No image file to upload — photo may have been lost in a redeploy', photoId);
-      logError(`uploadPhotosToCloudinary item ${itemId} photo ${photoId}`, new Error('no source path'));
-      return;
-    }
-
-    const imgbbUrl = await uploadImage(source, itemId);
-    if (!imgbbUrl) {
-      db.prepare(`UPDATE items SET processing_status = 'failed' WHERE id = ?`).run(itemId);
-      db.prepare(`UPDATE photos SET status = 'failed', error_message = ? WHERE id = ?`)
-        .run('🌸 Cloudinary upload failed — photo not saved to cloud storage', photoId);
-      logError(`uploadPhotosToCloudinary item ${itemId} photo ${photoId}`, new Error('upload returned empty URL'));
-      return;
-    }
-
-    const updatedMeta = JSON.stringify({ ...meta, imgbbUrl });
-    db.prepare(`UPDATE photos SET metadata = ? WHERE id = ?`).run(updatedMeta, photoId);
-    console.log(`[FotoFlip] Photo ${photoId} (item ${itemId}) saved to cloud: ${imgbbUrl}`);
-  }
-}
 
 const POSHMARK_HEADERS = ['SKU','ProductID (GTIN)','Title','Description','Department','Category','Sub-category','Quantity','Size','Condition','Brand','Color1','Color2','VariantGroupID','VariantType','VariantAttribute','Style Tag1','Style Tag2','Style Tag3','Orig price','Listing price','Shipping Discount','Price Floor Percent','Minimum Price','Availability','Drop time','Other info','Copy Listing?','Update Existing SKU?','NEW SKU','Primary image','Alt image 1','Alt image 2','Alt image 3','Alt image 4','Alt image 5','Alt image 6','Alt image 7','Alt image 8','Alt image 9','Alt image 10','Alt image 11','Alt image 12','Alt image 13','Alt image 14','Alt image 15'];
 

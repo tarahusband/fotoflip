@@ -122,7 +122,16 @@ function initDb() {
   if (!cols.includes('user_id'))            db.exec(`ALTER TABLE items ADD COLUMN user_id INTEGER REFERENCES users(id)`);
 
   const photoCols = db.pragma('table_info(photos)').map(c => c.name);
-  if (!photoCols.includes('user_id'))       db.exec(`ALTER TABLE photos ADD COLUMN user_id INTEGER REFERENCES users(id)`);
+  if (!photoCols.includes('user_id'))         db.exec(`ALTER TABLE photos ADD COLUMN user_id INTEGER REFERENCES users(id)`);
+  if (!photoCols.includes('cloudinary_url'))  db.exec(`ALTER TABLE photos ADD COLUMN cloudinary_url TEXT`);
+
+  // Backfill cloudinary_url from legacy metadata.imgbbUrl for any existing photos
+  db.exec(`
+    UPDATE photos
+    SET cloudinary_url = json_extract(metadata, '$.imgbbUrl')
+    WHERE cloudinary_url IS NULL
+      AND json_extract(metadata, '$.imgbbUrl') IS NOT NULL
+  `);
 
   const userCols = db.pragma('table_info(users)').map(c => c.name);
   if (!userCols.includes('role'))               db.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'`);
@@ -165,4 +174,11 @@ function backfillListings(db) {
   insertMany(whatnotItems, 'whatnot');
 }
 
-module.exports = { getDb, initDb, DB_PATH };
+function closeDb() {
+  if (db) {
+    db.close();
+    db = null;
+  }
+}
+
+module.exports = { getDb, initDb, closeDb, DB_PATH };

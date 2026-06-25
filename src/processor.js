@@ -101,6 +101,12 @@ async function sharpFallback(photoPath) {
 }
 
 async function freeProcess(photoPath) {
+  // @imgly downloads ~80MB ONNX models and crashes Railway — skip it in cloud deployments
+  if (process.env.DATA_DIR) {
+    console.log('[FotoFlip] Cloud env detected — using sharp fallback (no bg removal)');
+    return sharpFallback(photoPath);
+  }
+
   const os = require('os');
   const tmpIn  = path.join(os.tmpdir(), `ff_in_${Date.now()}.png`);
   const tmpOut = path.join(os.tmpdir(), `ff_out_${Date.now()}.png`);
@@ -295,7 +301,7 @@ async function processPhoto(photoPath, outputDir, photoId) {
 
 // ── Item orchestration ────────────────────────────────────────────────────────
 
-async function processItem(itemId, photoIds, processedDir) {
+async function processItem(itemId, photoIds, processedDir, uploadFn) {
   const db = getDb();
   db.prepare(`UPDATE items SET processing_status = 'processing' WHERE id = ?`).run(itemId);
 
@@ -316,10 +322,22 @@ async function processItem(itemId, photoIds, processedDir) {
         `UPDATE photos SET status = 'done', processed_path = ?, processed_at = datetime('now') WHERE id = ?`,
       ).run(processedPath, photoId);
 
-      const metadata = await extractMetadata(photo, processedPath);
-      await fs.writeFile(path.join(itemDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+      // Re-upload Sharp-processed version to Cloudinary (overwrites original)
+      let cloudinaryUrl = photo.cloudinary_url;
+      if (uploadFn) {
+        const newUrl = await uploadFn(processedPath, `photo-${photoId}`);
+        if (newUrl) {
+          cloudinaryUrl = newUrl;
+          db.prepare(`UPDATE photos SET cloudinary_url = ? WHERE id = ?`).run(newUrl, photoId);
+        }
+      }
+
+      const metadata = await extractMetadata(photo, processedPath, cloudinaryUrl);
+      const aiAvailable = !!(process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY);
+      const metaWithFlags = { ...metadata, _method: mode, ...(aiAvailable ? {} : { ai_unavailable: true }) };
+      await fs.writeFile(path.join(itemDir, 'metadata.json'), JSON.stringify(metaWithFlags, null, 2));
       db.prepare(`UPDATE photos SET metadata = ? WHERE id = ?`).run(
-        JSON.stringify({ ...metadata, _method: mode }), photoId,
+        JSON.stringify(metaWithFlags), photoId,
       );
 
       results.push({ photoId, dirName, processedName, success: true, mode });
@@ -337,12 +355,7 @@ async function processItem(itemId, photoIds, processedDir) {
 
 // ── Metadata extraction (gpt-4o vision) ──────────────────────────────────────
 
-async function extractWithOpenAI(photoPath, hint) {
-  const imageData = await fs.readFile(photoPath);
-  const b64 = imageData.toString('base64');
-  const ext = path.extname(photoPath).toLowerCase();
-  const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-
+async function extractWithOpenAI(photoPath, hint, cloudinaryUrl) {
   const hintLine = hint ? `User hint: ${hint}. Use this to inform your analysis.\n\n` : '';
   const prompt = `${hintLine}You are a resale product expert specializing in estate and luxury goods. Analyze this photo and return ONLY valid JSON with these fields:
 {
@@ -364,19 +377,28 @@ async function extractWithOpenAI(photoPath, hint) {
 }
 Return only the JSON object, no markdown, no explanation.`;
 
-  // Try Claude first
+  // Try Claude first — prefer URL-based image (no base64 needed)
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (anthropicKey) {
     try {
       const Anthropic = require('@anthropic-ai/sdk');
       const client = new Anthropic.default({ apiKey: anthropicKey });
+
+      let imageContent;
+      if (cloudinaryUrl) {
+        imageContent = { type: 'image', source: { type: 'url', url: cloudinaryUrl } };
+      } else {
+        const imageData = await fs.readFile(photoPath);
+        const b64 = imageData.toString('base64');
+        const ext = path.extname(photoPath).toLowerCase();
+        const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+        imageContent = { type: 'image', source: { type: 'base64', media_type: mimeType, data: b64 } };
+      }
+
       const response = await client.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 600,
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: mimeType, data: b64 } },
-          { type: 'text', text: prompt },
-        ]}],
+        messages: [{ role: 'user', content: [imageContent, { type: 'text', text: prompt }] }],
       });
       const text = response.content[0]?.text?.trim() || '';
       const clean = text.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/```\s*$/,'');
@@ -391,12 +413,21 @@ Return only the JSON object, no markdown, no explanation.`;
   if (!openaiKey) return null;
   const { OpenAI } = require('openai');
   const client = new OpenAI({ apiKey: openaiKey });
+
+  let imageContent;
+  if (cloudinaryUrl) {
+    imageContent = { type: 'image_url', image_url: { url: cloudinaryUrl } };
+  } else {
+    const imageData = await fs.readFile(photoPath);
+    const b64 = imageData.toString('base64');
+    const ext = path.extname(photoPath).toLowerCase();
+    const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+    imageContent = { type: 'image_url', image_url: { url: `data:${mimeType};base64,${b64}`, detail: 'high' } };
+  }
+
   const response = await client.chat.completions.create({
     model: 'gpt-4o',
-    messages: [{ role: 'user', content: [
-      { type: 'image_url', image_url: { url: `data:${mimeType};base64,${b64}`, detail: 'high' } },
-      { type: 'text', text: prompt },
-    ]}],
+    messages: [{ role: 'user', content: [imageContent, { type: 'text', text: prompt }] }],
     max_tokens: 600,
   });
   const text = response.choices[0]?.message?.content?.trim() || '';
@@ -404,10 +435,10 @@ Return only the JSON object, no markdown, no explanation.`;
   return JSON.parse(clean);
 }
 
-async function extractMetadata(photo, processedPath) {
+async function extractMetadata(photo, processedPath, cloudinaryUrl) {
   try {
     const existing = photo.metadata ? JSON.parse(photo.metadata) : {};
-    const metadata = await extractWithOpenAI(photo.path, existing.hint || '');
+    const metadata = await extractWithOpenAI(photo.path, existing.hint || '', cloudinaryUrl);
     if (metadata) return metadata;
   } catch (err) {
     console.warn('[FotoFlip] Metadata extraction failed:', err.message);
