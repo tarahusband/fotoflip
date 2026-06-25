@@ -84,9 +84,9 @@ app.get('/admin/db-check', (req, res) => {
     const log = fsSyncModule.readFileSync(ERROR_LOG, 'utf8');
     recentErrors = log.trim().split('\n').slice(-20);
   } catch {}
-  const photosWithUrl = db.prepare('SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NOT NULL AND cloudinary_url != ""').get();
-  const photosWithoutUrl = db.prepare('SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NULL OR cloudinary_url = ""').get();
-  const sampleBroken = db.prepare('SELECT id, path, processed_path, cloudinary_url FROM photos WHERE (cloudinary_url IS NULL OR cloudinary_url = "") AND processed_path IS NOT NULL LIMIT 3').all();
+  const photosWithUrl = db.prepare("SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NOT NULL AND cloudinary_url != ''").get();
+  const photosWithoutUrl = db.prepare("SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NULL OR cloudinary_url = ''").get();
+  const sampleBroken = db.prepare("SELECT id, path, processed_path, cloudinary_url FROM photos WHERE (cloudinary_url IS NULL OR cloudinary_url = '') AND processed_path IS NOT NULL LIMIT 3").all();
   const env = {
     cloudinary_cloud_name: !!process.env.CLOUDINARY_CLOUD_NAME,
     cloudinary_api_key: !!process.env.CLOUDINARY_API_KEY,
