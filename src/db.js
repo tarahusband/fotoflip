@@ -133,6 +133,22 @@ function initDb() {
       AND json_extract(metadata, '$.imgbbUrl') IS NOT NULL
   `);
 
+  // Backfill cloudinary_url for photos whose items were processed before
+  // Cloudinary-first was implemented. Old uploads used fotoflip/item-{itemId}.
+  if (process.env.CLOUDINARY_CLOUD_NAME) {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const items = db.prepare('SELECT id, photo_ids FROM items WHERE photo_ids IS NOT NULL').all();
+    for (const item of items) {
+      try {
+        const photoIds = JSON.parse(item.photo_ids || '[]');
+        const url = `https://res.cloudinary.com/${cloudName}/image/upload/fotoflip/item-${item.id}.jpg`;
+        for (const photoId of photoIds) {
+          db.prepare(`UPDATE photos SET cloudinary_url = ? WHERE id = ? AND cloudinary_url IS NULL`).run(url, photoId);
+        }
+      } catch {}
+    }
+  }
+
   const userCols = db.pragma('table_info(users)').map(c => c.name);
   if (!userCols.includes('role'))               db.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'`);
   if (!userCols.includes('onboarding_complete'))db.exec(`ALTER TABLE users ADD COLUMN onboarding_complete INTEGER DEFAULT 0`);
