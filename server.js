@@ -7,7 +7,7 @@ const fs = require('fs').promises;
 const cors = require('cors');
 const crypto = require('crypto');
 const sharp = require('sharp');
-const { getDb, initDb, closeDb } = require('./src/db');
+const { getDb, initDb, closeDb, DB_PATH } = require('./src/db');
 const { processItem } = require('./src/processor');
 const { setupAuth, requireAuth, getUserId } = require('./src/auth');
 
@@ -1244,6 +1244,30 @@ app.post('/api/items/:id/export/make', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// DB backup download — admin only
+app.get('/api/admin/backup', async (req, res) => {
+  const isAdmin = req.user?.role === 'admin' ||
+    req.headers['x-admin-secret'] === process.env.SESSION_SECRET;
+  if (!isAdmin) return res.status(403).json({ error: '🌸 Admin only' });
+
+  try {
+    const db = getDb();
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="fotoflip-${date}.db"`);
+    const stream = fsSyncModule.createReadStream(DB_PATH);
+    stream.on('error', e => {
+      console.warn('[FotoFlip] Backup stream error:', e.message);
+      if (!res.headersSent) res.status(500).json({ error: '🌸 Backup failed' });
+    });
+    stream.pipe(res);
+  } catch (e) {
+    console.warn('[FotoFlip] Backup failed:', e.message);
+    res.status(500).json({ error: '🌸 Backup failed: ' + e.message });
   }
 });
 
