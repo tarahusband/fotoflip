@@ -2004,6 +2004,11 @@ body {
 .settings-field { margin-bottom: 14px; }
 .settings-field:last-child { margin-bottom: 0; }
 
+.health-row { display:flex; align-items:center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size:13px; }
+.health-row:last-of-type { border-bottom: none; }
+.health-label { flex: 1; color: var(--text-muted); }
+.health-value { font-weight: 600; color: var(--dark); }
+
 .settings-field label {
   display: block;
   font-size: 13px;

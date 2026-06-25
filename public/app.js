@@ -1887,15 +1887,36 @@ function saveCouponNote() {
 
 async function loadSettings() {
   try {
-    const profile = await apiFetch('/api/profile');
-    renderProfileForm(profile);
+    const [profile, health] = await Promise.all([
+      apiFetch('/api/profile'),
+      apiFetch('/api/admin/health').catch(() => null),
+    ]);
+    renderProfileForm(profile, health);
   } catch (e) {
     document.getElementById('settingsForm').innerHTML =
       `<p style="color:var(--red)">🌸 Failed to load profile: ${e.message}</p>`;
   }
 }
 
-function renderProfileForm(p) {
+function renderHealthSection(h) {
+  const dot = ok => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${ok ? '#2ecc71' : '#e74c3c'};margin-right:7px;"></span>`;
+  const row = (label, ok, note) => `<div class="health-row">${dot(ok)}<span class="health-label">${label}</span><span class="health-value">${note}</span></div>`;
+  return `
+    <div class="settings-section">
+      <div class="settings-section-title">System Health</div>
+      ${row('Database', h.db_connected, h.db_connected ? 'Connected' : 'Error')}
+      ${row('Cloudinary', h.cloudinary_configured, h.cloudinary_configured ? 'Configured' : 'Missing keys')}
+      ${row('Anthropic', h.anthropic_configured, h.anthropic_configured ? 'Configured' : 'Missing key')}
+      ${row('Items', true, h.items)}
+      ${row('Photos', true, h.photos)}
+      ${row('Missing thumbnails', h.missing_thumbnails === 0, h.missing_thumbnails === 0 ? 'None' : h.missing_thumbnails)}
+      <div style="margin-top:14px;">
+        <a href="/api/admin/backup" class="btn btn-outline" style="font-size:13px;">Download DB Backup</a>
+      </div>
+    </div>`;
+}
+
+function renderProfileForm(p, health) {
   document.getElementById('settingsForm').innerHTML = `
     <div class="settings-section">
       <div class="settings-section-title">Seller Profile</div>
@@ -1939,7 +1960,8 @@ function renderProfileForm(p) {
     <div class="settings-actions">
       <button class="btn btn-primary" onclick="saveProfile()">Save Changes</button>
       <button class="btn btn-outline" onclick="switchView('home')">Cancel</button>
-    </div>`;
+    </div>
+    ${health ? renderHealthSection(health) : ''}`;
 }
 
 async function saveProfile() {
