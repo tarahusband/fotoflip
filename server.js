@@ -355,12 +355,16 @@ app.put('/api/items/:id/bundle', async (req, res) => {
       const photo = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
       if (!photo) return;
       const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
-      const imageSource = meta.imgbbUrl || photo.path;
+      const imageSource = photo.cloudinary_url || meta.imgbbUrl;
       if (!imageSource) return;
       const { main, sub } = getBundleLabel(meta, item);
       const buf = await applyBundleLabel(imageSource, main, sub);
+      const labelUrl = await cloudinaryUpload(buf, `item-${req.params.id}-labeled`);
+      if (labelUrl) {
+        db.prepare('UPDATE items SET bundle_label_url = ? WHERE id = ?').run(labelUrl, req.params.id);
+      }
       const labeledPath = path.join(PROCESSED_DIR, `item-${req.params.id}-labeled.jpg`);
-      await fs.writeFile(labeledPath, buf);
+      await fs.writeFile(labeledPath, buf).catch(() => {});
     } catch (e) {
       console.warn('[FotoFlip] Bundle label generation failed:', e.message);
     }
@@ -495,12 +499,12 @@ app.post('/api/items/:id/export/whatnot', async (req, res) => {
   if (!photo) return res.status(400).json({ error: 'No photos' });
   const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
 
-  let uploadSource = photo.processed_path;
-  if (item.is_bundle) {
-    const labeledPath = path.join(PROCESSED_DIR, `item-${item.id}-labeled.jpg`);
-    try { await fs.access(labeledPath); uploadSource = labeledPath; } catch (_) {}
+  let imageUrl = '';
+  if (item.is_bundle && item.bundle_label_url) {
+    imageUrl = item.bundle_label_url;
+  } else {
+    imageUrl = photo.cloudinary_url || meta.imgbbUrl || '';
   }
-  const imageUrl = uploadSource ? await uploadImage(uploadSource, item.id) : '';
 
   const cat = (meta.category || '').toLowerCase();
   const { whatnotCat, whatnotSub } = whatnotCategoryMap(cat);
@@ -537,17 +541,11 @@ app.get('/api/export/whatnot', async (req, res) => {
     if (!photo) continue;
     const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
 
-    let imageUrl = meta.imgbbUrl || '';
-    if (!imageUrl) {
-      const labeledPath = path.join(__dirname, 'processed', `item-${item.id}-labeled.jpg`);
-      const wUploadSource = (item.is_bundle && require('fs').existsSync(labeledPath)) ? labeledPath : photo.processed_path;
-      if (wUploadSource) {
-        imageUrl = await uploadImage(wUploadSource, item.id);
-        if (imageUrl) {
-          meta.imgbbUrl = imageUrl;
-          db.prepare('UPDATE photos SET metadata = ? WHERE id = ?').run(JSON.stringify(meta), photo.id);
-        }
-      }
+    let imageUrl = '';
+    if (item.is_bundle && item.bundle_label_url) {
+      imageUrl = item.bundle_label_url;
+    } else {
+      imageUrl = photo.cloudinary_url || meta.imgbbUrl || '';
     }
 
     const cat = (meta.category || '').toLowerCase();
@@ -876,17 +874,11 @@ app.post('/api/items/:id/export/poshmark', async (req, res) => {
   const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
   const q = v => { const s = String(v||''); return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s; };
 
-  let imageUrl = meta.imgbbUrl || '';
-  if (!imageUrl) {
-    const labeledPath = path.join(__dirname, 'processed', `item-${item.id}-labeled.jpg`);
-    const uploadSource = (item.is_bundle && require('fs').existsSync(labeledPath)) ? labeledPath : photo.processed_path;
-    if (uploadSource) {
-      imageUrl = await uploadImage(uploadSource, item.id);
-      if (imageUrl) {
-        meta.imgbbUrl = imageUrl;
-        db.prepare('UPDATE photos SET metadata = ? WHERE id = ?').run(JSON.stringify(meta), photo.id);
-      }
-    }
+  let imageUrl = '';
+  if (item.is_bundle && item.bundle_label_url) {
+    imageUrl = item.bundle_label_url;
+  } else {
+    imageUrl = photo.cloudinary_url || meta.imgbbUrl || '';
   }
 
   const csv = [POSHMARK_HEADERS.join(','), buildPoshmarkRow(item, meta, imageUrl, q)].join('\r\n') + '\r\n';
@@ -910,17 +902,11 @@ app.get('/api/export/poshmark', async (req, res) => {
     const photo = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
     if (!photo) continue;
     const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
-    let imageUrl = meta.imgbbUrl || '';
-    if (!imageUrl) {
-      const labeledPath = path.join(__dirname, 'processed', `item-${item.id}-labeled.jpg`);
-      const uploadSource = (item.is_bundle && require('fs').existsSync(labeledPath)) ? labeledPath : photo.processed_path;
-      if (uploadSource) {
-        imageUrl = await uploadImage(uploadSource, item.id);
-        if (imageUrl) {
-          meta.imgbbUrl = imageUrl;
-          db.prepare('UPDATE photos SET metadata = ? WHERE id = ?').run(JSON.stringify(meta), photo.id);
-        }
-      }
+    let imageUrl = '';
+    if (item.is_bundle && item.bundle_label_url) {
+      imageUrl = item.bundle_label_url;
+    } else {
+      imageUrl = photo.cloudinary_url || meta.imgbbUrl || '';
     }
     rows.push(buildPoshmarkRow(item, meta, imageUrl, q));
   }
@@ -1271,17 +1257,16 @@ app.post('/api/admin/regenerate-labels', async (req, res) => {
       const photoIds = JSON.parse(item.photo_ids || '[]');
       const photo = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
       const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
-      const imageSource = meta.imgbbUrl || photo.path;
+      const imageSource = photo.cloudinary_url || meta.imgbbUrl;
       if (!imageSource) { skipped++; continue; }
       const { main, sub } = getBundleLabel(meta, item);
       const buf = await applyBundleLabel(imageSource, main, sub);
-      const labeledPath = require('path').join(PROCESSED_DIR, `item-${item.id}-labeled.jpg`);
-      await fs.writeFile(labeledPath, buf);
-      // Clear Cloudinary cache so it re-uploads on next export
-      if (meta.imgbbUrl) {
-        delete meta.imgbbUrl;
-        db.prepare('UPDATE photos SET metadata = ? WHERE id = ?').run(JSON.stringify(meta), photo.id);
+      const labelUrl = await cloudinaryUpload(buf, `item-${item.id}-labeled`);
+      if (labelUrl) {
+        db.prepare('UPDATE items SET bundle_label_url = ? WHERE id = ?').run(labelUrl, item.id);
       }
+      const labeledPath = require('path').join(PROCESSED_DIR, `item-${item.id}-labeled.jpg`);
+      await fs.writeFile(labeledPath, buf).catch(() => {});
       done++;
     } catch (e) {
       errors.push({ id: item.id, err: e.message });

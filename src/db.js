@@ -120,6 +120,7 @@ function initDb() {
   if (!cols.includes('whatnot_exported'))   db.exec(`ALTER TABLE items ADD COLUMN whatnot_exported INTEGER DEFAULT 0`);
   if (!cols.includes('etsy_exported'))      db.exec(`ALTER TABLE items ADD COLUMN etsy_exported INTEGER DEFAULT 0`);
   if (!cols.includes('user_id'))            db.exec(`ALTER TABLE items ADD COLUMN user_id INTEGER REFERENCES users(id)`);
+  if (!cols.includes('bundle_label_url'))   db.exec(`ALTER TABLE items ADD COLUMN bundle_label_url TEXT`);
 
   const photoCols = db.pragma('table_info(photos)').map(c => c.name);
   if (!photoCols.includes('user_id'))         db.exec(`ALTER TABLE photos ADD COLUMN user_id INTEGER REFERENCES users(id)`);

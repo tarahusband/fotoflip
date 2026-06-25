@@ -635,7 +635,7 @@ function renderPhotoTab(item, photo) {
       </div>
     </div>` : '';
 
-  const labeledUrl = isBundle ? `/processed/item-${item.id}-labeled.jpg` : null;
+  const labeledUrl = (isBundle && item.bundle_label_url) ? item.bundle_label_url : null;
   const studioDisplay = labeledUrl
     ? `<img src="${labeledUrl}?t=${Date.now()}" class="photo-full" alt="Bundle Label" onerror="this.src='${proc || ''}';">`
     : proc
