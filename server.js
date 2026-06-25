@@ -48,7 +48,7 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-app.get('/health', (req, res) => res.json({ ok: true }));
+app.get('/health', (req, res) => res.json({ ok: true, v: '2026-06-25' }));
 
 app.post('/admin/import-items', express.json({ limit: '20mb' }), (req, res) => {
   if (req.headers['x-admin-secret'] !== process.env.SESSION_SECRET) return res.status(403).json({ error: 'forbidden' });
