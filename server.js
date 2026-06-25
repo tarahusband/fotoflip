@@ -41,18 +41,6 @@ app.get('/login', (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
-// Temp DB upload — before auth middleware
-app.post('/admin/upload-db', upload.single('db'), async (req, res) => {
-  const secret = req.headers['x-admin-secret'];
-  if (secret !== process.env.SESSION_SECRET) return res.status(403).json({ error: 'forbidden' });
-  if (!req.file) return res.status(400).json({ error: 'no file' });
-  const dbPath = process.env.DATA_DIR ? `${process.env.DATA_DIR}/fotoflip.db` : null;
-  if (!dbPath) return res.status(400).json({ error: 'no DATA_DIR set' });
-  await fs.copyFile(req.file.path, dbPath);
-  await fs.unlink(req.file.path);
-  res.json({ ok: true, path: dbPath });
-});
-
 // All other routes require auth when GOOGLE_CLIENT_ID is set
 app.use(requireAuth);
 
