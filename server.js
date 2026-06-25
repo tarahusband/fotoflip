@@ -1374,7 +1374,7 @@ app.get('/api/dashboard', (req, res) => {
     entry.count++;
     if (item.created_at > entry.latestDate) entry.latestDate = item.created_at;
     if (entry.thumbs.length < 4) {
-      const url = toPublicUrl(photo?.processed_path || photo?.path);
+      const url = photo ? resolvePhotoUrl(photo, item.id) : null;
       if (url) entry.thumbs.push(url);
     }
   }
@@ -1409,7 +1409,7 @@ app.get('/api/dashboard', (req, res) => {
     const firstId = JSON.parse(item.photo_ids||'[]')[0];
     const photo = firstId ? draftPhotoMap[firstId] : null;
     const meta = photo?.metadata ? JSON.parse(photo.metadata) : {};
-    return { id: item.id, sku: item.sku, title: meta.title || 'Untitled', thumb: toPublicUrl(photo?.processed_path || photo?.path) || null, created_at: item.created_at };
+    return { id: item.id, sku: item.sku, title: meta.title || 'Untitled', thumb: photo ? resolvePhotoUrl(photo, item.id) : null, created_at: item.created_at };
   });
 
   res.json({
@@ -1516,7 +1516,7 @@ app.get('/api/inventory', (req, res) => {
     const photoIds = JSON.parse(item.photo_ids || '[]');
     const photo = photoMap[photoIds[0]] || null;
     const meta = photo?.metadata ? JSON.parse(photo.metadata) : {};
-    return { ...item, meta, thumbPath: photo?.processed_path || photo?.path || null };
+    return { ...item, meta, thumbPath: photo ? resolvePhotoUrl(photo, item.id) : null };
   });
 
   if (search) {

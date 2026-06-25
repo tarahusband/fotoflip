@@ -238,10 +238,6 @@ function photoThumbUrl(photo) {
 }
 
 function originalUrl(photo) {
-  if (!photo) return null;
-  const filePath = photo.path || '';
-  const uploadName = filePath.split('/uploads/')[1] || photo.name;
-  if (uploadName) return `/uploads/${uploadName}`;
   return photo?.url || null;
 }
 
@@ -1444,17 +1440,8 @@ function renderInventoryTable() {
   document.getElementById('invSelectAll').checked = list.length > 0 && list.every(i => invSelectedIds.has(i.id));
 }
 
-function invThumbUrl(filePath) {
-  if (!filePath) return null;
-  if (filePath.includes('/processed/')) {
-    const part = filePath.split('/processed/').pop();
-    return `/processed/${part}`;
-  }
-  if (filePath.includes('/uploads/')) {
-    const part = filePath.split('/uploads/').pop();
-    return `/uploads/${part}`;
-  }
-  return null;
+function invThumbUrl(url) {
+  return url || null;
 }
 
 function invRowClick(e, id) {
