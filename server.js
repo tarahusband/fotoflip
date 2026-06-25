@@ -84,7 +84,17 @@ app.get('/admin/db-check', (req, res) => {
     const log = fsSyncModule.readFileSync(ERROR_LOG, 'utf8');
     recentErrors = log.trim().split('\n').slice(-20);
   } catch {}
-  res.json({ dbPath, items, users, itemsByUser, tables, sessions, node_env: process.env.NODE_ENV || 'not set', recentErrors });
+  const photosWithUrl = db.prepare('SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NOT NULL AND cloudinary_url != ""').get();
+  const photosWithoutUrl = db.prepare('SELECT COUNT(*) as count FROM photos WHERE cloudinary_url IS NULL OR cloudinary_url = ""').get();
+  const sampleBroken = db.prepare('SELECT id, path, processed_path, cloudinary_url FROM photos WHERE (cloudinary_url IS NULL OR cloudinary_url = "") AND processed_path IS NOT NULL LIMIT 3').all();
+  const env = {
+    cloudinary_cloud_name: !!process.env.CLOUDINARY_CLOUD_NAME,
+    cloudinary_api_key: !!process.env.CLOUDINARY_API_KEY,
+    cloudinary_api_secret: !!process.env.CLOUDINARY_API_SECRET,
+    anthropic_key: !!process.env.ANTHROPIC_API_KEY,
+    openai_key: !!process.env.OPENAI_API_KEY,
+  };
+  res.json({ dbPath, items, users, itemsByUser, tables, sessions, node_env: process.env.NODE_ENV || 'not set', recentErrors, photosWithUrl, photosWithoutUrl, sampleBroken, env });
 });
 
 // All other routes require auth when GOOGLE_CLIENT_ID is set
