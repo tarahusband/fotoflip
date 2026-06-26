@@ -33,6 +33,7 @@ app.get('/terms',          (req, res) => res.sendFile(path.join(__dirname, 'publ
 app.get('/do-not-sell',    (req, res) => res.sendFile(path.join(__dirname, 'public', 'do-not-sell.html')));
 app.get('/privacy-request',(req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-request.html')));
 app.get('/support',        (req, res) => res.sendFile(path.join(__dirname, 'public', 'support.html')));
+app.get('/wiki',           (req, res) => res.sendFile(path.join(__dirname, 'public', 'wiki.html')));
 
 app.get('/health', (req, res) => res.json({ ok: true, v: '2026-06-26' }));
 
