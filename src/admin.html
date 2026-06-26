@@ -298,6 +298,7 @@ async function loadUsers() {
             <th>Role</th>
             <th style="text-align:right">Items</th>
             <th>Last login</th>
+            <th>Consented</th>
             <th></th>
           </tr>
         </thead>
@@ -319,6 +320,7 @@ async function loadUsers() {
                 </td>
                 <td style="text-align:right;color:#888">${u.item_count}</td>
                 <td style="color:#888;font-size:12px">${u.last_login_at ? u.last_login_at.slice(0, 10) : '—'}</td>
+                <td style="font-size:12px">${u.consented_at ? `<span style="color:#27ae60">✓ ${u.consented_at.slice(0,10)}</span>` : '<span style="color:#bbb">—</span>'}</td>
                 <td style="text-align:right;white-space:nowrap;display:flex;gap:6px;justify-content:flex-end">
                   ${isMe ? '<span class="you-tag">you</span>' : `
                     ${!isRevoked ? `<button class="btn btn-outline btn-role" onclick="changeRole(${u.id}, '${otherRole}')">${otherLabel}</button>` : ''}

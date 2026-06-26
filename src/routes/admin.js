@@ -101,9 +101,11 @@ router.get('/api/admin/users', requireAdmin, (req, res) => {
   const db    = getDb();
   const users = db.prepare(`
     SELECT u.id, u.email, u.name, u.role, u.status, u.last_login_at, u.created_at,
-           COUNT(i.id) as item_count
+           COUNT(i.id) as item_count,
+           c.accepted_at as consented_at
     FROM users u
     LEFT JOIN items i ON i.user_id = u.id
+    LEFT JOIN user_consents c ON c.user_id = u.id AND c.consent_version = '1.0'
     GROUP BY u.id
     ORDER BY u.created_at ASC
   `).all();

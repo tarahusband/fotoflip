@@ -129,6 +129,27 @@ function initDb() {
     );
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_request_access_email ON request_access(email COLLATE NOCASE);
+
+    CREATE TABLE IF NOT EXISTS user_consents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      email TEXT NOT NULL,
+      consent_version TEXT NOT NULL DEFAULT '1.0',
+      accepted_at TEXT DEFAULT (datetime('now')),
+      ip_address TEXT,
+      user_agent TEXT
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_user_consents_user_version ON user_consents(user_id, consent_version);
+
+    CREATE TABLE IF NOT EXISTS privacy_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      request_type TEXT NOT NULL,
+      details TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // drop obsolete tables

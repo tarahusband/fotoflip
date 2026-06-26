@@ -82,6 +82,16 @@ function setupAuth(app, session) {
           return req.logout(() => res.redirect('/not-invited?email=' + encodeURIComponent(userEmail)));
         }
       }
+
+      // BETA-006 — store consent record on login if not already recorded for this version
+      try {
+        const db = getDb();
+        db.prepare(`
+          INSERT OR IGNORE INTO user_consents (user_id, email, consent_version, ip_address, user_agent)
+          VALUES (?, ?, '1.0', ?, ?)
+        `).run(req.user.id, userEmail, req.ip || '', req.headers['user-agent'] || '');
+      } catch {}
+
       res.redirect('/');
     }
   );

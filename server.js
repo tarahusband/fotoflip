@@ -69,6 +69,20 @@ app.post('/api/access-request', (req, res) => {
   }
 });
 
+// Public — privacy data request form
+app.post('/api/privacy-request', express.json(), (req, res) => {
+  const { email, type, details } = req.body || {};
+  if (!email?.trim() || !type?.trim()) {
+    return res.status(400).json({ error: '🌸 Email and request type are required.' });
+  }
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO privacy_requests (email, request_type, details)
+    VALUES (?, ?, ?)
+  `).run(email.trim().toLowerCase(), type.trim(), details?.trim() || '');
+  res.json({ ok: true });
+});
+
 // Test-only routes — must come before requireAuth so they can create sessions
 if (process.env.NODE_ENV === 'test') {
   app.use(require('./src/routes/test'));

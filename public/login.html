@@ -90,6 +90,42 @@
       color: #EF4444;
     }
 
+    .consent-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      text-align: left;
+      margin-bottom: 20px;
+    }
+
+    .consent-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      cursor: pointer;
+      accent-color: #7C3AED;
+    }
+
+    .consent-row span {
+      font-size: 12px;
+      color: #555;
+      line-height: 1.5;
+    }
+
+    .consent-row a {
+      color: #7C3AED;
+      text-decoration: none;
+    }
+
+    .consent-row a:hover { text-decoration: underline; }
+
+    .google-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
     .footer {
       margin-top: 32px;
       font-size: 11px;
@@ -104,7 +140,12 @@
     <div class="tagline">Listing starts the moment you buy.</div>
     <div class="badge">v0.1 Alpha</div>
 
-    <a href="/auth/google" class="google-btn">
+    <div class="consent-row">
+      <input type="checkbox" id="consentCheck" onchange="toggleSignIn()">
+      <span>I agree to FotoFlip's <a href="/terms" target="_blank">Terms</a> and <a href="/privacy" target="_blank">Privacy Policy</a>. I understand FotoFlip is in early access and that support may review my account details to help troubleshoot issues.</span>
+    </div>
+
+    <a href="/auth/google" class="google-btn" id="signInBtn" aria-disabled="true" style="pointer-events:none;opacity:0.4">
       <svg class="google-icon" viewBox="0 0 24 24">
         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
         <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -124,6 +165,12 @@
   <script>
     if (new URLSearchParams(location.search).get('error')) {
       document.getElementById('errorMsg').style.display = 'block';
+    }
+    function toggleSignIn() {
+      const btn = document.getElementById('signInBtn');
+      const checked = document.getElementById('consentCheck').checked;
+      btn.style.opacity = checked ? '1' : '0.4';
+      btn.style.pointerEvents = checked ? '' : 'none';
     }
   </script>
 </body>
