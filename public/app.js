@@ -44,10 +44,45 @@ async function loadCurrentUser() {
     const user = await apiFetch('/auth/me');
     const el = document.getElementById('navUser');
     if (el) {
+      const initials = (user.name || user.email || '?')[0].toUpperCase();
       el.innerHTML = `
-        ${user.picture ? `<img class="nav-user-pic" src="${user.picture}" referrerpolicy="no-referrer">` : ''}
-        <span class="nav-user-name">${user.name || user.email}</span>
-        <button class="nav-logout" onclick="location.href='/auth/logout'" title="Sign out">↪</button>`;
+        <div class="nav-profile">
+          ${user.picture
+            ? `<img class="nav-avatar" src="${user.picture}" referrerpolicy="no-referrer">`
+            : `<div class="nav-avatar nav-avatar-init">${initials}</div>`}
+          <div class="nav-profile-info">
+            <div class="nav-profile-name">${escHtml(user.name || user.email)}</div>
+            <div class="nav-profile-email">${escHtml(user.email)}</div>
+          </div>
+        </div>
+        <a href="/auth/logout" class="nav-menu-row">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Sign out
+          <span class="nav-menu-arrow">›</span>
+        </a>
+        <div class="nav-menu-label">SUPPORT</div>
+        <a href="/support" target="_blank" class="nav-menu-row">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Customer Support <span class="nav-menu-sub">Get help, report issues, or send feedback</span></span>
+          <span class="nav-menu-arrow">›</span>
+        </a>
+        <div class="nav-menu-label">LEGAL</div>
+        <a href="/privacy" target="_blank" class="nav-menu-row">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Privacy Policy
+          <span class="nav-menu-arrow">›</span>
+        </a>
+        <a href="/terms" target="_blank" class="nav-menu-row">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Terms of Use
+          <span class="nav-menu-arrow">›</span>
+        </a>
+        <a href="/do-not-sell" target="_blank" class="nav-menu-row">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+          Do Not Sell or Share
+          <span class="nav-menu-arrow">›</span>
+        </a>
+        <div class="nav-menu-note">Your data is private and secure.</div>`;
     }
     if (user.role === 'admin') {
       const adminLink = document.getElementById('navAdminLink');
