@@ -140,7 +140,7 @@
     <div class="tagline">Listing starts the moment you buy.</div>
     <div class="badge">v0.1 Alpha</div>
 
-    <div class="consent-row">
+    <div class="consent-row" id="consentRow">
       <input type="checkbox" id="consentCheck" onchange="toggleSignIn()">
       <span>I agree to FotoFlip's <a href="/terms" target="_blank">Terms</a> and <a href="/privacy" target="_blank">Privacy Policy</a>. I understand FotoFlip is in early access and that support may review my account details to help troubleshoot issues.</span>
     </div>
@@ -171,6 +171,15 @@
       const checked = document.getElementById('consentCheck').checked;
       btn.style.opacity = checked ? '1' : '0.4';
       btn.style.pointerEvents = checked ? '' : 'none';
+      if (checked) localStorage.setItem('ff_consented', '1');
+    }
+    // Returning users — skip the checkbox if they've already consented on this device
+    if (localStorage.getItem('ff_consented')) {
+      document.getElementById('consentCheck').checked = true;
+      document.getElementById('consentRow').style.display = 'none';
+      const btn = document.getElementById('signInBtn');
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = '';
     }
   </script>
 </body>
