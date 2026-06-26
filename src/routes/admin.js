@@ -214,6 +214,17 @@ router.patch('/api/admin/access-requests/:id', requireAdmin, express.json(), (re
 
 // ── ADMIN-006: Impersonation / View as User ───────────────────────────────────
 
+router.post('/api/admin/impersonate/exit', requireAdmin, (req, res) => {
+  const logId = req.session.impersonation_log_id;
+  if (logId) {
+    const db = getDb();
+    db.prepare(`UPDATE admin_impersonation_log SET ended_at = datetime('now') WHERE id = ?`).run(logId);
+  }
+  delete req.session.impersonating_user_id;
+  delete req.session.impersonation_log_id;
+  res.json({ ok: true });
+});
+
 router.post('/api/admin/impersonate/:id', requireAdmin, (req, res) => {
   const targetId = parseInt(req.params.id, 10);
   if (targetId === req.user.id) {
@@ -229,17 +240,6 @@ router.post('/api/admin/impersonate/:id', requireAdmin, (req, res) => {
   ).run(req.user.id, targetId, req.ip || '').lastInsertRowid;
 
   res.json({ ok: true, target });
-});
-
-router.post('/api/admin/impersonate/exit', requireAdmin, (req, res) => {
-  const logId = req.session.impersonation_log_id;
-  if (logId) {
-    const db = getDb();
-    db.prepare(`UPDATE admin_impersonation_log SET ended_at = datetime('now') WHERE id = ?`).run(logId);
-  }
-  delete req.session.impersonating_user_id;
-  delete req.session.impersonation_log_id;
-  res.json({ ok: true });
 });
 
 // ── Content management ────────────────────────────────────────────────────────
