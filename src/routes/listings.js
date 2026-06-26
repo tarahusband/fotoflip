@@ -36,6 +36,10 @@ router.post('/api/listings', (req, res) => {
 
 router.put('/api/listings/:id', (req, res) => {
   const db      = getDb();
+  const userId  = getUserId(req);
+  const listing = db.prepare('SELECT * FROM listings WHERE id = ?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: '🌸 Listing not found' });
+  if (userId && listing.user_id !== userId) return res.status(403).json({ error: '🌸 You do not have access to this listing' });
   const allowed = ['status', 'price', 'platform_listing_id', 'published_at', 'sold_at', 'error_message'];
   const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: '🌸 No valid fields to update' });

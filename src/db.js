@@ -191,6 +191,14 @@ function initDb() {
   if (!userCols.includes('role'))               db.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'`);
   if (!userCols.includes('onboarding_complete'))db.exec(`ALTER TABLE users ADD COLUMN onboarding_complete INTEGER DEFAULT 0`);
   if (!userCols.includes('last_login_at'))      db.exec(`ALTER TABLE users ADD COLUMN last_login_at TEXT`);
+  // SEC-002: user access status (active / revoked)
+  if (!userCols.includes('status'))             db.exec(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`);
+
+  // BETA-004: consent fields on access request table
+  const reqCols = db.pragma('table_info(request_access)').map(c => c.name);
+  if (!reqCols.includes('email_consent')) db.exec(`ALTER TABLE request_access ADD COLUMN email_consent INTEGER DEFAULT 0`);
+  if (!reqCols.includes('sms_consent'))   db.exec(`ALTER TABLE request_access ADD COLUMN sms_consent INTEGER DEFAULT 0`);
+  if (!reqCols.includes('consent_at'))    db.exec(`ALTER TABLE request_access ADD COLUMN consent_at TEXT`);
 
   // Bootstrap: promote the first user to admin if no admin exists yet
   const hasAdmin = db.prepare(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`).get();

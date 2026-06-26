@@ -1,5 +1,5 @@
 const express   = require('express');
-const { getDb, getUserSetting } = require('../db');
+const { getDb, getUserSetting } = require('../db'); // getUserSetting used by /api/markets
 const { getUserId } = require('../auth');
 const { resolvePhotoUrl } = require('../lib/images');
 const { buildSku } = require('../lib/csv');
@@ -107,26 +107,32 @@ router.get('/api/dashboard', (req, res) => {
 // ── Markets ───────────────────────────────────────────────────────────────────
 
 router.get('/api/markets', (req, res) => {
-  const db = getDb();
+  const db     = getDb();
+  const userId = getUserId(req);
+  const ua     = userId ? [userId] : [];
+  const uWhere = userId ? `WHERE user_id = ?` : `WHERE 1=1`;
+  const uAnd   = userId ? `AND user_id = ?`   : '';
 
-  const ready  = db.prepare(`SELECT COUNT(*) as n FROM items WHERE processing_status='done'`).get().n;
-  const failed = db.prepare(`SELECT COUNT(*) as n FROM items WHERE processing_status='failed'`).get().n;
-  const review = db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status='review'`).get().n;
+  const ready  = db.prepare(`SELECT COUNT(*) as n FROM items ${uWhere} AND processing_status='done'`).get(...ua).n;
+  const failed = db.prepare(`SELECT COUNT(*) as n FROM items ${uWhere} AND processing_status='failed'`).get(...ua).n;
+  const review = db.prepare(`SELECT COUNT(*) as n FROM items ${uWhere} AND inv_status='review'`).get(...ua).n;
 
-  const poshExported = db.prepare(`SELECT COUNT(*) as n FROM items WHERE poshmark_exported=1`).get().n;
-  const whatExported = db.prepare(`SELECT COUNT(*) as n FROM items WHERE whatnot_exported=1`).get().n;
-  const poshLastDate = db.prepare(`SELECT MAX(date_listed) as d FROM items WHERE poshmark_exported=1`).get()?.d || null;
-  const whatLastDate = db.prepare(`SELECT MAX(date_listed) as d FROM items WHERE whatnot_exported=1`).get()?.d || null;
+  const poshExported = db.prepare(`SELECT COUNT(*) as n FROM items ${uWhere} AND poshmark_exported=1`).get(...ua).n;
+  const whatExported = db.prepare(`SELECT COUNT(*) as n FROM items ${uWhere} AND whatnot_exported=1`).get(...ua).n;
+  const poshLastDate = db.prepare(`SELECT MAX(date_listed) as d FROM items ${uWhere} AND poshmark_exported=1`).get(...ua)?.d || null;
+  const whatLastDate = db.prepare(`SELECT MAX(date_listed) as d FROM items ${uWhere} AND whatnot_exported=1`).get(...ua)?.d || null;
 
-  const makeUrl   = db.prepare(`SELECT value FROM settings WHERE key='make_webhook_url'`).get()?.value || null;
-  const etsyToken = db.prepare(`SELECT value FROM settings WHERE key='etsy_access_token'`).get()?.value || null;
+  const makeUrl   = getUserSetting(db, userId, 'make_webhook_url');
+  const etsyToken = getUserSetting(db, userId, 'etsy_access_token');
 
-  const errorRows = db.prepare(`SELECT id, photo_ids FROM items WHERE processing_status='failed' ORDER BY id DESC LIMIT 20`).all();
-  const allPhotos = db.prepare(`SELECT * FROM photos`).all();
-  const photoMap  = Object.fromEntries(allPhotos.map(p => [p.id, p]));
+  const errorRows = db.prepare(`SELECT id, photo_ids FROM items ${uWhere} AND processing_status='failed' ORDER BY id DESC LIMIT 20`).all(...ua);
+  const errPhotoIds = [...new Set(errorRows.flatMap(r => { try { return JSON.parse(r.photo_ids||'[]'); } catch { return []; } }))];
+  const errPhotoMap = errPhotoIds.length
+    ? Object.fromEntries(db.prepare(`SELECT * FROM photos WHERE id IN (${errPhotoIds.map(()=>'?').join(',')})`).all(...errPhotoIds).map(p => [p.id, p]))
+    : {};
   const errorItems = errorRows.map(r => {
     const photoIds = JSON.parse(r.photo_ids || '[]');
-    const photo    = photoMap[photoIds[0]];
+    const photo    = errPhotoMap[photoIds[0]];
     const m        = photo?.metadata ? JSON.parse(photo.metadata) : {};
     return { id: r.id, title: m.title || '' };
   });
@@ -136,11 +142,11 @@ router.get('/api/markets', (req, res) => {
            SUM(poshmark_exported) as posh,
            SUM(whatnot_exported)  as whatnot
     FROM items
-    WHERE date_listed IS NOT NULL AND (poshmark_exported=1 OR whatnot_exported=1)
+    WHERE date_listed IS NOT NULL AND (poshmark_exported=1 OR whatnot_exported=1) ${uAnd}
     GROUP BY date_listed
     ORDER BY date_listed DESC
     LIMIT 10
-  `).all();
+  `).all(...ua);
 
   const connectedCount = 2 + (makeUrl ? 1 : 0);
   const lastExport     = [poshLastDate, whatLastDate].filter(Boolean).sort().pop() || null;
@@ -160,19 +166,20 @@ router.get('/api/markets', (req, res) => {
 // ── Inventory ─────────────────────────────────────────────────────────────────
 
 router.get('/api/inventory', (req, res) => {
-  const db = getDb();
+  const db     = getDb();
+  const userId = getUserId(req);
   const { status, search } = req.query;
 
-  let query    = `SELECT * FROM items`;
-  const params  = [];
   const clauses = [];
+  const params  = [];
+  if (userId)                        { clauses.push(`user_id = ?`);   params.push(userId); }
+  if (status && status !== 'all')    { clauses.push(`inv_status = ?`); params.push(status); }
+  const where = clauses.length ? `WHERE ` + clauses.join(' AND ') : '';
+  const items = db.prepare(`SELECT * FROM items ${where} ORDER BY created_at DESC`).all(...params);
 
-  if (status && status !== 'all') { clauses.push(`inv_status = ?`); params.push(status); }
-  if (clauses.length) query += ` WHERE ` + clauses.join(' AND ');
-  query += ` ORDER BY created_at DESC`;
-
-  const items    = db.prepare(query).all(...params);
-  const photos   = db.prepare(`SELECT * FROM photos`).all();
+  const photos   = userId
+    ? db.prepare(`SELECT * FROM photos WHERE user_id = ?`).all(userId)
+    : db.prepare(`SELECT * FROM photos`).all();
   const photoMap = Object.fromEntries(photos.map(p => [p.id, p]));
 
   let result = items.map(item => {
@@ -223,9 +230,11 @@ router.get('/api/inventory/stats', (req, res) => {
 });
 
 router.put('/api/items/:id/inventory', (req, res) => {
-  const db   = getDb();
-  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  const db     = getDb();
+  const userId = getUserId(req);
+  const item   = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: '🌸 Item not found' });
+  if (userId && item.user_id !== userId) return res.status(403).json({ error: '🌸 You do not have access to this item' });
 
   const allowed = ['location', 'inv_status', 'date_listed', 'date_sold', 'date_shipped', 'poshmark_exported', 'whatnot_exported', 'etsy_exported'];
   const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
@@ -238,7 +247,8 @@ router.put('/api/items/:id/inventory', (req, res) => {
 });
 
 router.put('/api/inventory/bulk', (req, res) => {
-  const db = getDb();
+  const db     = getDb();
+  const userId = getUserId(req);
   const { ids, ...fields } = req.body;
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: '🌸 No item IDs provided' });
 
@@ -249,8 +259,10 @@ router.put('/api/inventory/bulk', (req, res) => {
   const setClauses   = updates.map(([col]) => `${col} = ?`).join(', ');
   const setValues    = updates.map(([, v]) => v);
   const placeholders = ids.map(() => '?').join(',');
+  const ownerClause  = userId ? `AND user_id = ?` : '';
+  const ownerArg     = userId ? [userId] : [];
 
-  db.prepare(`UPDATE items SET ${setClauses} WHERE id IN (${placeholders})`).run(...setValues, ...ids);
+  db.prepare(`UPDATE items SET ${setClauses} WHERE id IN (${placeholders}) ${ownerClause}`).run(...setValues, ...ids, ...ownerArg);
 
   const newStatus = fields.inv_status;
   if (newStatus === 'sold' || newStatus === 'shipped') {

@@ -54,9 +54,11 @@ function setupAuth(app, session) {
 
   passport.serializeUser((user, done) => done(null, user.id));
   passport.deserializeUser((id, done) => {
-    const db = getDb();
+    const db   = getDb();
     const user = db.prepare(`SELECT * FROM users WHERE id = ?`).get(id);
-    done(null, user || false);
+    // SEC-002: kill existing sessions for revoked users on every request
+    if (!user || user.status === 'revoked') return done(null, false);
+    done(null, user);
   });
 
   // Google OAuth routes
@@ -65,13 +67,19 @@ function setupAuth(app, session) {
   app.get('/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/login?error=1' }),
     (req, res) => {
+      const userEmail = req.user?.email || '';
+
+      // SEC-002: block revoked users immediately
+      if (req.user?.status === 'revoked') {
+        return req.logout(() => res.redirect('/not-invited?email=' + encodeURIComponent(userEmail)));
+      }
+
       // BETA-001 — invite gate: admin always passes; everyone else must be on the allow list
       if (req.user?.role !== 'admin') {
-        const db = getDb();
-        const allowed = db.prepare('SELECT id FROM allowed_users WHERE email = ?').get(req.user?.email);
+        const db      = getDb();
+        const allowed = db.prepare('SELECT id FROM allowed_users WHERE email = ?').get(userEmail);
         if (!allowed) {
-          const rejectedEmail = req.user?.email || '';
-          return req.logout(() => res.redirect('/not-invited?email=' + encodeURIComponent(rejectedEmail)));
+          return req.logout(() => res.redirect('/not-invited?email=' + encodeURIComponent(userEmail)));
         }
       }
       res.redirect('/');

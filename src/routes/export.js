@@ -29,12 +29,23 @@ function resolveImageUrl(item, photo, meta) {
   return photo.cloudinary_url || meta.imgbbUrl || '';
 }
 
+// SEC-001: verify the requesting user owns the item
+function ownershipCheck(req, item, res) {
+  const userId = getUserId(req);
+  if (userId && item.user_id !== userId) {
+    res.status(403).json({ error: '🌸 You do not have access to this item' });
+    return false;
+  }
+  return true;
+}
+
 // ── Whatnot single ────────────────────────────────────────────────────────────
 
 router.post('/api/items/:id/export/whatnot', async (req, res) => {
   const db   = getDb();
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const photoIds = JSON.parse(item.photo_ids || '[]');
   const photo    = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
   if (!photo) return res.status(400).json({ error: 'No photos' });
@@ -62,8 +73,11 @@ router.post('/api/items/:id/export/whatnot', async (req, res) => {
 // ── Whatnot bulk ──────────────────────────────────────────────────────────────
 
 router.get('/api/export/whatnot', async (req, res) => {
-  const db    = getDb();
-  const items = db.prepare(`SELECT * FROM items WHERE processing_status = 'done' ORDER BY id`).all();
+  const db     = getDb();
+  const userId = getUserId(req);
+  const items  = userId
+    ? db.prepare(`SELECT * FROM items WHERE processing_status = 'done' AND user_id = ? ORDER BY id`).all(userId)
+    : db.prepare(`SELECT * FROM items WHERE processing_status = 'done' ORDER BY id`).all();
   if (!items.length) return res.status(400).json({ error: '🌸 No ready items to export' });
 
   const HEADERS = ['Category','Sub Category','Title','Description','Quantity','Type','Price','Shipping Profile','Offerable','Hazmat','Condition','Cost Per Item','SKU','Image URL 1','Image URL 2','Image URL 3','Image URL 4','Image URL 5','Image URL 6','Image URL 7','Image URL 8'];
@@ -88,7 +102,6 @@ router.get('/api/export/whatnot', async (req, res) => {
 
   const today  = new Date().toISOString().slice(0, 10);
   const csv    = HEADERS.join(',') + '\r\n' + rows.join('\r\n') + '\r\n';
-  const userId = getUserId(req);
   const upsert = db.prepare(`INSERT INTO listings (user_id, item_id, platform, status, published_at, source) VALUES (?, ?, 'whatnot', 'published', ?, 'manual') ON CONFLICT(item_id, platform) DO UPDATE SET status='published', published_at=excluded.published_at`);
   try { db.transaction(() => { for (const item of items) upsert.run(userId, item.id, today); })(); } catch (_) {}
 
@@ -104,6 +117,7 @@ router.post('/api/items/:id/export/poshmark', async (req, res) => {
   const db   = getDb();
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const photoIds = JSON.parse(item.photo_ids || '[]');
   const photo    = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
   if (!photo) return res.status(400).json({ error: 'No photos' });
@@ -121,8 +135,11 @@ router.post('/api/items/:id/export/poshmark', async (req, res) => {
 const POSHMARK_BATCH_SIZE = 39;
 
 router.get('/api/export/poshmark', async (req, res) => {
-  const db    = getDb();
-  const items = db.prepare(`SELECT * FROM items WHERE processing_status = 'done' ORDER BY id`).all();
+  const db     = getDb();
+  const userId = getUserId(req);
+  const items  = userId
+    ? db.prepare(`SELECT * FROM items WHERE processing_status = 'done' AND user_id = ? ORDER BY id`).all(userId)
+    : db.prepare(`SELECT * FROM items WHERE processing_status = 'done' ORDER BY id`).all();
   if (!items.length) return res.status(400).json({ error: '🌸 No ready items to export' });
 
   const q    = v => { const s = String(v||''); return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s; };
@@ -150,7 +167,6 @@ router.get('/api/export/poshmark', async (req, res) => {
 
   const today  = new Date().toISOString().slice(0, 10);
   const csv    = [POSHMARK_HEADERS.join(','), ...batch.map(b => b.row)].join('\r\n') + '\r\n';
-  const userId = getUserId(req);
   const upsert = db.prepare(`INSERT INTO listings (user_id, item_id, platform, status, published_at, source) VALUES (?, ?, 'poshmark', 'published', ?, 'manual') ON CONFLICT(item_id, platform) DO UPDATE SET status='published', published_at=excluded.published_at`);
   try { db.transaction(() => { for (const { item } of batch) upsert.run(userId, item.id, today); })(); } catch (_) {}
 
@@ -217,6 +233,7 @@ router.post('/api/items/:id/export/etsy', async (req, res) => {
 
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const photoIds = JSON.parse(item.photo_ids || '[]');
   const photo    = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
   if (!photo) return res.status(400).json({ error: 'No photos' });
@@ -267,6 +284,7 @@ router.post('/api/items/:id/export/make', async (req, res) => {
 
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const photoIds = JSON.parse(item.photo_ids || '[]');
   const photo    = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
   if (!photo) return res.status(400).json({ error: 'No photos' });

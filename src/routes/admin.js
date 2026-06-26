@@ -100,7 +100,7 @@ router.post('/api/admin/normalize-titles', requireAdmin, (req, res) => {
 router.get('/api/admin/users', requireAdmin, (req, res) => {
   const db    = getDb();
   const users = db.prepare(`
-    SELECT u.id, u.email, u.name, u.role, u.last_login_at, u.created_at,
+    SELECT u.id, u.email, u.name, u.role, u.status, u.last_login_at, u.created_at,
            COUNT(i.id) as item_count
     FROM users u
     LEFT JOIN items i ON i.user_id = u.id
@@ -108,6 +108,22 @@ router.get('/api/admin/users', requireAdmin, (req, res) => {
     ORDER BY u.created_at ASC
   `).all();
   res.json(users);
+});
+
+router.patch('/api/admin/users/:id/status', requireAdmin, express.json(), (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  const { status } = req.body || {};
+  if (!['active', 'revoked'].includes(status)) {
+    return res.status(400).json({ error: '🌸 Status must be "active" or "revoked"' });
+  }
+  if (targetId === req.user.id) {
+    return res.status(400).json({ error: '🌸 You cannot change your own status' });
+  }
+  const db   = getDb();
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+  if (!user) return res.status(404).json({ error: '🌸 User not found' });
+  db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, targetId);
+  res.json({ ok: true, id: targetId, status });
 });
 
 router.patch('/api/admin/users/:id/role', requireAdmin, express.json(), (req, res) => {

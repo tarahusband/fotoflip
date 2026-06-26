@@ -35,22 +35,32 @@ app.get('/health', (req, res) => res.json({ ok: true, v: '2026-06-26' }));
 
 // Public — request access form submission (no auth required)
 app.post('/api/access-request', (req, res) => {
-  const { first_name, email, seller_handle, sells_on, sells_what, inventory_size, phone, business_name, notes } = req.body || {};
+  const { first_name, email, seller_handle, sells_on, sells_what, inventory_size, phone, business_name, notes, email_consent, sms_consent } = req.body || {};
   if (!first_name?.trim() || !email?.trim() || !email.includes('@')) {
     return res.status(400).json({ error: '🌸 First name and a valid email are required.' });
   }
   if (!sells_on?.trim() || !sells_what?.trim() || !inventory_size?.trim()) {
     return res.status(400).json({ error: '🌸 Please fill in all required fields.' });
   }
+  if (!phone?.trim()) {
+    return res.status(400).json({ error: '🌸 Phone number is required.' });
+  }
+  if (!email_consent) {
+    return res.status(400).json({ error: '🌸 Email consent is required.' });
+  }
+  if (!sms_consent) {
+    return res.status(400).json({ error: '🌸 SMS consent is required.' });
+  }
   const db = getDb();
   try {
     db.prepare(`
-      INSERT INTO request_access (first_name, email, seller_handle, sells_on, sells_what, inventory_size, phone, business_name, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO request_access (first_name, email, seller_handle, sells_on, sells_what, inventory_size, phone, business_name, notes, email_consent, sms_consent, consent_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `).run(
       first_name.trim(), email.trim().toLowerCase(),
       seller_handle?.trim() || '', sells_on.trim(), sells_what.trim(), inventory_size.trim(),
-      phone?.trim() || '', business_name?.trim() || '', notes?.trim() || ''
+      phone.trim(), business_name?.trim() || '', notes?.trim() || '',
+      email_consent ? 1 : 0, sms_consent ? 1 : 0
     );
     res.json({ ok: true, status: 'created' });
   } catch (e) {

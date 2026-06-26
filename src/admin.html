@@ -176,6 +176,9 @@
 
     .btn-role { font-size: 11px; padding: 4px 10px; }
     .you-tag  { font-size: 11px; color: #aaa; font-style: italic; }
+    .btn-revoke   { font-size: 11px; padding: 4px 10px; color: var(--red); border-color: #f5c6c2; }
+    .btn-restore  { font-size: 11px; padding: 4px 10px; color: var(--green); border-color: #c3e6cb; }
+    tr.revoked td { opacity: 0.5; }
   </style>
 </head>
 <body>
@@ -300,23 +303,29 @@ async function loadUsers() {
         </thead>
         <tbody>
           ${users.map(u => {
-            const isMe = u.id === currentUserId;
+            const isMe      = u.id === currentUserId;
             const otherRole = u.role === 'admin' ? 'user' : 'admin';
             const otherLabel = u.role === 'admin' ? 'Demote' : 'Promote';
+            const isRevoked  = u.status === 'revoked';
             return `
-              <tr>
+              <tr class="${isRevoked ? 'revoked' : ''}">
                 <td>
                   <div style="font-weight:500">${esc(u.name || u.email)}</div>
                   <div style="font-size:12px;color:#888">${esc(u.email)}</div>
                 </td>
-                <td><span class="role-badge ${u.role}">${u.role}</span></td>
+                <td>
+                  <span class="role-badge ${u.role}">${u.role}</span>
+                  ${isRevoked ? '<span style="font-size:11px;font-weight:700;color:#c0392b;margin-left:6px;text-transform:uppercase;letter-spacing:0.4px">revoked</span>' : ''}
+                </td>
                 <td style="text-align:right;color:#888">${u.item_count}</td>
                 <td style="color:#888;font-size:12px">${u.last_login_at ? u.last_login_at.slice(0, 10) : '—'}</td>
-                <td style="text-align:right">
-                  ${isMe
-                    ? '<span class="you-tag">you</span>'
-                    : `<button class="btn btn-outline btn-role" onclick="changeRole(${u.id}, '${otherRole}')">${otherLabel}</button>`
-                  }
+                <td style="text-align:right;white-space:nowrap;display:flex;gap:6px;justify-content:flex-end">
+                  ${isMe ? '<span class="you-tag">you</span>' : `
+                    ${!isRevoked ? `<button class="btn btn-outline btn-role" onclick="changeRole(${u.id}, '${otherRole}')">${otherLabel}</button>` : ''}
+                    <button class="btn btn-outline ${isRevoked ? 'btn-restore' : 'btn-revoke'}" onclick="changeStatus(${u.id}, '${isRevoked ? 'active' : 'revoked'}')">
+                      ${isRevoked ? 'Restore' : 'Revoke'}
+                    </button>
+                  `}
                 </td>
               </tr>`;
           }).join('')}
@@ -324,6 +333,21 @@ async function loadUsers() {
       </table>`;
   } catch (e) {
     el.innerHTML = `<span style="color:#C0392B">Failed to load users: ${e.message}</span>`;
+  }
+}
+
+async function changeStatus(userId, status) {
+  const action = status === 'revoked' ? 'revoke this user' : 'restore this user';
+  if (!confirm(`Are you sure you want to ${action}? ${status === 'revoked' ? 'They will be signed out immediately.' : ''}`)) return;
+  try {
+    await apiFetch(`/api/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    showToast(status === 'revoked' ? 'User revoked' : 'User restored');
+    await loadUsers();
+  } catch (e) {
+    showToast(e.message, 'error');
   }
 }
 

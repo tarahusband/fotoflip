@@ -10,6 +10,16 @@ const { PROCESSED_DIR, logError } = require('../lib/config');
 
 const router = express.Router();
 
+// SEC-001: verify the requesting user owns the item (admin exempt in dev mode)
+function ownershipCheck(req, item, res) {
+  const userId = getUserId(req);
+  if (userId && item.user_id !== userId) {
+    res.status(403).json({ error: '🌸 You do not have access to this item' });
+    return false;
+  }
+  return true;
+}
+
 router.get('/api/items', (req, res) => {
   const db     = getDb();
   const userId = getUserId(req);
@@ -72,6 +82,7 @@ router.get('/api/items/:id', (req, res) => {
   const db   = getDb();
   const item = db.prepare(`SELECT * FROM items WHERE id = ?`).get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const photoIds = JSON.parse(item.photo_ids || '[]');
   const photos   = photoIds.map(id => db.prepare(`SELECT * FROM photos WHERE id = ?`).get(id)).filter(Boolean).map(p => ({ ...p, url: resolvePhotoUrl(p, item.id) }));
   res.json({ ...item, photoIds, photos });
@@ -81,6 +92,7 @@ router.post('/api/items/:id/process', async (req, res) => {
   const db   = getDb();
   const item = db.prepare(`SELECT * FROM items WHERE id = ?`).get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const photoIds = JSON.parse(item.photo_ids || '[]');
 
   if (req.body.is_bundle !== undefined) {
@@ -97,6 +109,7 @@ router.delete('/api/items/:id', async (req, res) => {
   const db   = getDb();
   const item = db.prepare(`SELECT * FROM items WHERE id = ?`).get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
 
   const photoIds = JSON.parse(item.photo_ids || '[]');
   for (const photoId of photoIds) {
@@ -129,6 +142,7 @@ router.put('/api/items/:id', (req, res) => {
   const db   = getDb();
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const { status, processing_status } = req.body;
   if (status)            db.prepare('UPDATE items SET status = ? WHERE id = ?').run(status, req.params.id);
   if (processing_status) db.prepare('UPDATE items SET processing_status = ? WHERE id = ?').run(processing_status, req.params.id);
@@ -139,6 +153,7 @@ router.put('/api/items/:id/bundle', async (req, res) => {
   const db      = getDb();
   const current = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!current) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, current, res)) return;
   const { is_bundle, bundle_type, bundle_count, weight, weight_unit } = req.body;
   db.prepare('UPDATE items SET is_bundle=?, bundle_type=?, bundle_count=?, weight=?, weight_unit=? WHERE id=?')
     .run(
@@ -187,6 +202,7 @@ router.put('/api/items/:id/metadata', async (req, res) => {
   const db     = getDb();
   const item   = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const photoIds = JSON.parse(item.photo_ids || '[]');
   for (const photoId of photoIds) {
     const photo = db.prepare('SELECT * FROM photos WHERE id = ?').get(photoId);
@@ -207,6 +223,7 @@ router.post('/api/items/:id/metadata/extract', async (req, res) => {
   const db     = getDb();
   const item   = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const photoIds = JSON.parse(item.photo_ids || '[]');
   const photo    = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
   if (!photo) return res.status(400).json({ error: 'No photos' });
@@ -231,6 +248,7 @@ router.post('/api/items/:id/listing/generate', async (req, res) => {
   const db     = getDb();
   const item   = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const photoIds = JSON.parse(item.photo_ids || '[]');
   const photo    = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
   if (!photo) return res.status(400).json({ error: 'No photos' });
@@ -300,6 +318,9 @@ router.post('/api/items/:id/listing/generate', async (req, res) => {
 
 router.post('/api/items/:id/sold', (req, res) => {
   const db   = getDb();
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  if (!ownershipCheck(req, item, res)) return;
   const { date_sold, date_shipped } = req.body;
   const inv_status = date_shipped ? 'shipped' : 'sold';
   db.prepare(`UPDATE items SET inv_status = ?, date_sold = ?, date_shipped = ? WHERE id = ?`)

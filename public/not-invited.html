@@ -281,8 +281,8 @@
 
         <div class="field-row">
           <div class="field">
-            <label>Phone <span class="opt">optional</span></label>
-            <input type="tel" id="fPhone" placeholder="(555) 000-0000" autocomplete="tel">
+            <label>Phone</label>
+            <input type="tel" id="fPhone" placeholder="(555) 000-0000" autocomplete="tel" required>
           </div>
           <div class="field">
             <label>Business / shop name <span class="opt">optional</span></label>
@@ -293,6 +293,17 @@
         <div class="field">
           <label>Notes <span class="opt">optional</span></label>
           <textarea id="fNotes" placeholder="Anything else you'd like us to know…"></textarea>
+        </div>
+
+        <div class="field" style="gap:10px;display:flex;flex-direction:column;">
+          <label style="display:flex;align-items:flex-start;gap:10px;font-weight:normal;cursor:pointer;">
+            <input type="checkbox" id="fEmailConsent" style="margin-top:3px;flex-shrink:0;">
+            <span>I agree to receive account updates and communications from FotoFlip by email.</span>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:10px;font-weight:normal;cursor:pointer;">
+            <input type="checkbox" id="fSmsConsent" style="margin-top:3px;flex-shrink:0;">
+            <span>I agree to receive SMS notifications from FotoFlip. Message and data rates may apply. Reply STOP to opt out.</span>
+          </label>
         </div>
 
         <button class="submit-btn" id="submitBtn" onclick="submitRequest()">Submit Request</button>
@@ -306,7 +317,7 @@
       <div class="state-icon">✅</div>
       <div class="state-title">You're on the request list.</div>
       <p class="state-body">
-        Thanks for requesting FotoFlip access. We'll review your resale workflow and send an update when your account is ready.
+        Thanks for requesting FotoFlip access. We'll review your resale workflow and send an update when your account goes live.
       </p>
     </div>
 
@@ -363,9 +374,15 @@
       const phone         = document.getElementById('fPhone').value.trim();
       const business_name = document.getElementById('fBusiness').value.trim();
       const notes         = document.getElementById('fNotes').value.trim();
+      const email_consent = document.getElementById('fEmailConsent').checked;
+      const sms_consent   = document.getElementById('fSmsConsent').checked;
 
-      if (!first_name || !email || !seller_handle || !sells_on || !sells_what || !inventory_size) {
+      if (!first_name || !email || !seller_handle || !sells_on || !sells_what || !inventory_size || !phone) {
         alert('Please fill in all required fields.');
+        return;
+      }
+      if (!email_consent || !sms_consent) {
+        alert('Please check both consent boxes to continue.');
         return;
       }
 
@@ -376,7 +393,7 @@
         const res  = await fetch('/api/access-request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ first_name, email, seller_handle, sells_on, sells_what, inventory_size, phone, business_name, notes }),
+          body: JSON.stringify({ first_name, email, seller_handle, sells_on, sells_what, inventory_size, phone, business_name, notes, email_consent, sms_consent }),
         });
         const data = await res.json();
 
