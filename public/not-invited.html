@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FotoFlip — Invite Only</title>
+  <title>FotoFlip — Request Access</title>
   <link rel="icon" type="image/png" href="/favicon.png">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -14,9 +14,9 @@
       color: #1E1E1E;
       min-height: 100vh;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
-      padding: 24px;
+      padding: 40px 20px 60px;
     }
 
     .card {
@@ -24,30 +24,30 @@
       border: 1px solid #E0DDD8;
       border-radius: 12px;
       padding: 48px 40px;
-      max-width: 420px;
+      max-width: 540px;
       width: 100%;
-      text-align: center;
     }
 
     .logo {
-      font-size: 28px;
+      font-size: 22px;
       font-weight: 700;
       color: #6644DF;
       letter-spacing: -0.5px;
-      margin-bottom: 32px;
+      margin-bottom: 28px;
     }
 
     h1 {
       font-size: 20px;
-      font-weight: 600;
+      font-weight: 700;
       margin-bottom: 12px;
+      line-height: 1.3;
     }
 
-    p {
+    .body-text {
       font-size: 14px;
       color: #555;
-      line-height: 1.6;
-      margin-bottom: 16px;
+      line-height: 1.65;
+      margin-bottom: 8px;
     }
 
     .divider {
@@ -56,41 +56,349 @@
       margin: 28px 0;
     }
 
-    a.btn {
+    /* ── CTAs ── */
+    .cta-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+
+    .btn-primary {
       display: inline-block;
-      padding: 10px 24px;
+      padding: 10px 22px;
       background: #6644DF;
       color: #fff;
       border-radius: 6px;
       text-decoration: none;
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s;
     }
 
-    a.btn:hover { background: #5535c5; }
+    .btn-primary:hover { background: #5535c5; }
+
+    .btn-outline {
+      display: inline-block;
+      padding: 10px 22px;
+      background: transparent;
+      color: #1E1E1E;
+      border: 1px solid #E0DDD8;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .btn-outline:hover { border-color: #aaa; }
+
+    /* ── Form ── */
+    #requestForm {
+      margin-top: 32px;
+      display: none;
+    }
+
+    .form-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .form-sub {
+      font-size: 13px;
+      color: #777;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: #333;
+    }
+
+    .field label .opt {
+      font-weight: 400;
+      color: #999;
+      font-size: 12px;
+      margin-left: 4px;
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid #E0DDD8;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      color: #1E1E1E;
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus { border-color: #6644DF; }
+
+    .field textarea { resize: vertical; min-height: 72px; }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 11px;
+      margin-top: 8px;
+      background: #6644DF;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .submit-btn:hover:not(:disabled) { background: #5535c5; }
+    .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* ── Success / duplicate / error states ── */
+    #successState,
+    #duplicateState,
+    #errorState { display: none; }
+
+    .state-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
+
+    .state-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .state-body {
+      font-size: 14px;
+      color: #555;
+      line-height: 1.65;
+    }
 
     .hint {
       font-size: 12px;
-      color: #999;
-      margin-top: 16px;
+      color: #aaa;
+      margin-top: 20px;
     }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="logo">FotoFlip</div>
-    <h1>This is an invite-only beta.</h1>
-    <p>
-      FotoFlip is currently only available to invited users.
-      If you were given access, make sure you're signing in with
-      the correct Google account.
-    </p>
-    <p>
-      If you'd like to request an invite, reach out directly to the team.
-    </p>
-    <hr class="divider">
-    <a class="btn" href="/login">Sign in with a different account</a>
-    <p class="hint">You were signed out automatically.</p>
+
+    <div id="mainState">
+      <h1>This email does not match an approved invite.</h1>
+      <p class="body-text">
+        FotoFlip is currently in invite-only beta. The Google account you used is not on the approved access list yet.
+      </p>
+      <p class="body-text">
+        If you were invited, please sign in with the Google account connected to your invite.
+        If you'd like access, fill out the request form below and we'll review your account.
+      </p>
+
+      <div class="cta-row">
+        <button class="btn-primary" onclick="showForm()">Request Access</button>
+        <a class="btn-outline" href="/auth/switch-account">Try Another Google Account</a>
+      </div>
+
+      <div id="requestForm">
+        <hr class="divider">
+        <div class="form-title">Request FotoFlip Access</div>
+        <div class="form-sub">Tell us a little about your resale workflow so we can match you with the right early-access group.</div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>First name</label>
+            <input type="text" id="fFirstName" placeholder="Jane" autocomplete="given-name">
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" id="fEmail" placeholder="you@example.com" autocomplete="email">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Seller username / handle</label>
+          <input type="text" id="fHandle" placeholder="e.g. @bocabelle">
+        </div>
+
+        <div class="field">
+          <label>Where do you sell most often?</label>
+          <select id="fSellsOn">
+            <option value="">Select a platform…</option>
+            <option>Poshmark</option>
+            <option>Whatnot</option>
+            <option>eBay</option>
+            <option>Etsy</option>
+            <option>Depop</option>
+            <option>Mercari</option>
+            <option>Facebook Marketplace</option>
+            <option>Multiple platforms</option>
+            <option>Other</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>What do you usually sell?</label>
+          <input type="text" id="fSellsWhat" placeholder="e.g. vintage jewelry, designer handbags, sneakers">
+        </div>
+
+        <div class="field">
+          <label>Approximate inventory size</label>
+          <select id="fInventorySize">
+            <option value="">Select a range…</option>
+            <option>Under 25 items</option>
+            <option>25–100 items</option>
+            <option>100–500 items</option>
+            <option>500+ items</option>
+          </select>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>Phone <span class="opt">optional</span></label>
+            <input type="tel" id="fPhone" placeholder="(555) 000-0000" autocomplete="tel">
+          </div>
+          <div class="field">
+            <label>Business / shop name <span class="opt">optional</span></label>
+            <input type="text" id="fBusiness" placeholder="e.g. Boca Closet">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Notes <span class="opt">optional</span></label>
+          <textarea id="fNotes" placeholder="Anything else you'd like us to know…"></textarea>
+        </div>
+
+        <button class="submit-btn" id="submitBtn" onclick="submitRequest()">Submit Request</button>
+      </div>
+
+      <p class="hint">You were signed out automatically.</p>
+    </div>
+
+    <!-- Success -->
+    <div id="successState">
+      <div class="state-icon">✅</div>
+      <div class="state-title">You're on the request list.</div>
+      <p class="state-body">
+        Thanks for requesting FotoFlip access. We'll review your resale workflow and send an update when your account is ready.
+      </p>
+    </div>
+
+    <!-- Duplicate -->
+    <div id="duplicateState">
+      <div class="state-icon">📬</div>
+      <div class="state-title">You're already on the request list.</div>
+      <p class="state-body">
+        Good news — this email is already registered for FotoFlip early access. We'll send an update when your spot is ready.
+      </p>
+    </div>
+
+    <!-- Error -->
+    <div id="errorState">
+      <div class="state-icon">🌸</div>
+      <div class="state-title">Something went sideways.</div>
+      <p class="state-body">
+        We couldn't save your request. Please try again in a minute.
+      </p>
+      <div class="cta-row" style="margin-top:20px;">
+        <button class="btn-primary" onclick="showError(false)">Try Again</button>
+      </div>
+    </div>
   </div>
+
+  <script>
+    // Prefill email from query param (passed by auth callback after rejecting login)
+    const params = new URLSearchParams(location.search);
+    const prefillEmail = params.get('email');
+    if (prefillEmail) {
+      document.getElementById('fEmail').value = prefillEmail;
+    }
+
+    function showForm() {
+      const form = document.getElementById('requestForm');
+      form.style.display = 'block';
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function showError(visible) {
+      document.getElementById('mainState').style.display   = visible ? 'none' : '';
+      document.getElementById('errorState').style.display  = visible ? 'block' : 'none';
+      if (!visible) showForm();
+    }
+
+    async function submitRequest() {
+      const btn = document.getElementById('submitBtn');
+      const first_name    = document.getElementById('fFirstName').value.trim();
+      const email         = document.getElementById('fEmail').value.trim();
+      const seller_handle = document.getElementById('fHandle').value.trim();
+      const sells_on      = document.getElementById('fSellsOn').value;
+      const sells_what    = document.getElementById('fSellsWhat').value.trim();
+      const inventory_size = document.getElementById('fInventorySize').value;
+      const phone         = document.getElementById('fPhone').value.trim();
+      const business_name = document.getElementById('fBusiness').value.trim();
+      const notes         = document.getElementById('fNotes').value.trim();
+
+      if (!first_name || !email || !seller_handle || !sells_on || !sells_what || !inventory_size) {
+        alert('Please fill in all required fields.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Submitting…';
+
+      try {
+        const res  = await fetch('/api/access-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ first_name, email, seller_handle, sells_on, sells_what, inventory_size, phone, business_name, notes }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          btn.disabled = false;
+          btn.textContent = 'Submit Request';
+          alert(data.error || '🌸 Something went wrong. Please try again.');
+          return;
+        }
+
+        document.getElementById('mainState').style.display = 'none';
+        if (data.status === 'duplicate') {
+          document.getElementById('duplicateState').style.display = 'block';
+        } else {
+          document.getElementById('successState').style.display = 'block';
+        }
+      } catch {
+        btn.disabled = false;
+        btn.textContent = 'Submit Request';
+        showError(true);
+      }
+    }
+  </script>
 </body>
 </html>

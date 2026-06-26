@@ -70,7 +70,8 @@ function setupAuth(app, session) {
         const db = getDb();
         const allowed = db.prepare('SELECT id FROM allowed_users WHERE email = ?').get(req.user?.email);
         if (!allowed) {
-          return req.logout(() => res.redirect('/not-invited'));
+          const rejectedEmail = req.user?.email || '';
+          return req.logout(() => res.redirect('/not-invited?email=' + encodeURIComponent(rejectedEmail)));
         }
       }
       res.redirect('/');
@@ -80,6 +81,12 @@ function setupAuth(app, session) {
   app.get('/auth/logout', (req, res) => {
     req.logout(() => res.redirect('/login'));
   });
+
+  // Forces Google account picker — used by "Try Another Account" on /not-invited
+  app.get('/auth/switch-account', passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account',
+  }));
 
   app.get('/auth/me', (req, res) => {
     if (!req.user) return res.status(401).json({ error: '🌸 Not authenticated' });

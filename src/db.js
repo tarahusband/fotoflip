@@ -112,6 +112,23 @@ function initDb() {
       value TEXT,
       PRIMARY KEY (user_id, key)
     );
+
+    CREATE TABLE IF NOT EXISTS request_access (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      first_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      seller_handle TEXT,
+      sells_on TEXT,
+      sells_what TEXT,
+      inventory_size TEXT,
+      phone TEXT,
+      business_name TEXT,
+      notes TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_request_access_email ON request_access(email COLLATE NOCASE);
   `);
 
   // drop obsolete tables

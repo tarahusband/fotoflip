@@ -164,6 +164,36 @@ router.delete('/api/admin/allowed-users/:email', requireAdmin, (req, res) => {
   res.json({ ok: true, email });
 });
 
+// ── BETA-003: Access request management ──────────────────────────────────────
+
+router.get('/api/admin/access-requests', requireAdmin, (req, res) => {
+  const db = getDb();
+  const rows = db.prepare(`SELECT * FROM request_access ORDER BY created_at DESC`).all();
+  res.json(rows);
+});
+
+router.patch('/api/admin/access-requests/:id', requireAdmin, express.json(), (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { action } = req.body || {};
+  if (!['approve', 'dismiss'].includes(action)) {
+    return res.status(400).json({ error: '🌸 Action must be "approve" or "dismiss"' });
+  }
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM request_access WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: '🌸 Request not found' });
+
+  if (action === 'approve') {
+    try {
+      db.prepare('INSERT OR IGNORE INTO allowed_users (email, added_by) VALUES (?, ?)').run(row.email, req.user.id);
+    } catch {}
+    db.prepare(`UPDATE request_access SET status = 'approved' WHERE id = ?`).run(id);
+    return res.json({ ok: true, status: 'approved', email: row.email });
+  }
+
+  db.prepare(`UPDATE request_access SET status = 'dismissed' WHERE id = ?`).run(id);
+  res.json({ ok: true, status: 'dismissed' });
+});
+
 // ── Content management ────────────────────────────────────────────────────────
 
 router.post('/api/admin/regenerate-labels', requireAdmin, async (req, res) => {

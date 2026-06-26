@@ -206,6 +206,14 @@
     </div>
   </div>
 
+  <!-- Access Requests -->
+  <div class="section">
+    <div class="section-title">Access Requests</div>
+    <div class="card">
+      <div id="requestsContent" class="spinner">Loading…</div>
+    </div>
+  </div>
+
   <!-- Allow List -->
   <div class="section">
     <div class="section-title">Invite List</div>
@@ -429,6 +437,70 @@ async function removeEmail(email) {
   }
 }
 
+// ── Access Requests ───────────────────────────────────────────────────────────
+
+async function loadAccessRequests() {
+  const el = document.getElementById('requestsContent');
+  try {
+    const rows = await apiFetch('/api/admin/access-requests');
+    if (!rows.length) { el.innerHTML = '<div class="empty">No access requests yet.</div>'; return; }
+    const statusBadge = s => {
+      const colors = { pending: '#888', approved: '#27AE60', dismissed: '#aaa' };
+      return `<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;color:${colors[s]||'#888'}">${s}</span>`;
+    };
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Name / Email</th>
+            <th>Sells on</th>
+            <th>What they sell</th>
+            <th>Size</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr id="req-${r.id}">
+              <td>
+                <div style="font-weight:500">${esc(r.first_name)}</div>
+                <div style="font-size:12px;color:#888">${esc(r.email)}</div>
+                ${r.seller_handle ? `<div style="font-size:12px;color:#aaa">${esc(r.seller_handle)}</div>` : ''}
+              </td>
+              <td style="font-size:13px">${esc(r.sells_on||'—')}</td>
+              <td style="font-size:13px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.sells_what||'—')}</td>
+              <td style="font-size:13px;white-space:nowrap">${esc(r.inventory_size||'—')}</td>
+              <td>${statusBadge(r.status)}</td>
+              <td style="text-align:right;white-space:nowrap">
+                ${r.status === 'pending' ? `
+                  <button class="btn btn-outline btn-role" style="color:#27AE60;border-color:#c3e6cb;margin-right:4px" onclick="actionRequest(${r.id},'approve')">Approve</button>
+                  <button class="btn btn-danger" onclick="actionRequest(${r.id},'dismiss')">Dismiss</button>
+                ` : '—'}
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    el.innerHTML = `<span style="color:#C0392B">Failed to load requests: ${e.message}</span>`;
+  }
+}
+
+async function actionRequest(id, action) {
+  const label = action === 'approve' ? 'approve this request and add them to the invite list' : 'dismiss this request';
+  if (!confirm(`Are you sure you want to ${label}?`)) return;
+  try {
+    const r = await apiFetch(`/api/admin/access-requests/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action }),
+    });
+    showToast(action === 'approve' ? `${r.email} approved and added to invite list` : 'Request dismissed');
+    await loadAccessRequests();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
 // ── Quick Actions ─────────────────────────────────────────────────────────────
 
 async function runAction(path, label) {
@@ -463,6 +535,7 @@ document.getElementById('addEmailInput').addEventListener('keydown', e => {
   } catch {}
   loadHealth();
   loadUsers();
+  loadAccessRequests();
   loadAllowedUsers();
 })();
 </script>

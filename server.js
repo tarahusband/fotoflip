@@ -31,7 +31,33 @@ app.get('/not-invited', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'not-invited.html'));
 });
 
-app.get('/health', (req, res) => res.json({ ok: true, v: '2026-06-25' }));
+app.get('/health', (req, res) => res.json({ ok: true, v: '2026-06-26' }));
+
+// Public — request access form submission (no auth required)
+app.post('/api/access-request', (req, res) => {
+  const { first_name, email, seller_handle, sells_on, sells_what, inventory_size, phone, business_name, notes } = req.body || {};
+  if (!first_name?.trim() || !email?.trim() || !email.includes('@')) {
+    return res.status(400).json({ error: '🌸 First name and a valid email are required.' });
+  }
+  if (!sells_on?.trim() || !sells_what?.trim() || !inventory_size?.trim()) {
+    return res.status(400).json({ error: '🌸 Please fill in all required fields.' });
+  }
+  const db = getDb();
+  try {
+    db.prepare(`
+      INSERT INTO request_access (first_name, email, seller_handle, sells_on, sells_what, inventory_size, phone, business_name, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      first_name.trim(), email.trim().toLowerCase(),
+      seller_handle?.trim() || '', sells_on.trim(), sells_what.trim(), inventory_size.trim(),
+      phone?.trim() || '', business_name?.trim() || '', notes?.trim() || ''
+    );
+    res.json({ ok: true, status: 'created' });
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) return res.json({ ok: true, status: 'duplicate' });
+    throw e;
+  }
+});
 
 // Test-only routes — must come before requireAuth so they can create sessions
 if (process.env.NODE_ENV === 'test') {
