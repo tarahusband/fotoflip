@@ -152,26 +152,40 @@ async function exportAllPoshmark(btn) {
   const orig = btn ? btn.textContent : '';
   if (btn) { btn.textContent = 'Generating…'; btn.disabled = true; }
   try {
-    const res = await fetch('/api/export/poshmark');
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      toast('🌸 ' + (j.error || 'Export failed'), 'error');
-      return;
+    // Check how many batches are needed (Poshmark limit: 39 rows per file)
+    const info = await apiFetch('/api/export/poshmark?info=1');
+    if (!info || info.error) { toast('🌸 Export failed', 'error'); return; }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const allExportedIds = [];
+
+    for (let batch = 1; batch <= info.totalBatches; batch++) {
+      const res = await fetch(`/api/export/poshmark?batch=${batch}`);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast('🌸 ' + (j.error || `Batch ${batch} failed`), 'error');
+        return;
+      }
+      const exportedIds = JSON.parse(res.headers.get('X-Export-Item-Ids') || '[]');
+      allExportedIds.push(...exportedIds);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      const suffix = info.totalBatches > 1 ? `-part${batch}of${info.totalBatches}` : '';
+      a.href = url; a.download = `poshmark-bulk-${today}${suffix}.csv`; a.click();
+      URL.revokeObjectURL(url);
+      if (info.totalBatches > 1) await new Promise(r => setTimeout(r, 400));
     }
-    const exportedIds = JSON.parse(res.headers.get('X-Export-Item-Ids') || '[]');
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const today = new Date().toISOString().slice(0,10);
-    a.href = url;
-    a.download = `poshmark-bulk-${today}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast(`Poshmark CSV downloaded (${exportedIds.length} items)`, 'success');
-    if (exportedIds.length && confirm(`Mark ${exportedIds.length} item${exportedIds.length !== 1 ? 's' : ''} as Listed on Poshmark?`)) {
+
+    const msg = info.totalBatches > 1
+      ? `Poshmark: ${info.totalBatches} CSV files downloaded (${allExportedIds.length} items total)`
+      : `Poshmark CSV downloaded (${allExportedIds.length} items)`;
+    toast(msg, 'success');
+
+    if (allExportedIds.length && confirm(`Mark ${allExportedIds.length} item${allExportedIds.length !== 1 ? 's' : ''} as Listed on Poshmark?`)) {
       await apiFetch('/api/inventory/bulk', {
         method: 'PUT',
-        body: JSON.stringify({ ids: exportedIds, poshmark_exported: 1, inv_status: 'listed', date_listed: today }),
+        body: JSON.stringify({ ids: allExportedIds, poshmark_exported: 1, inv_status: 'listed', date_listed: today }),
       });
       toast('Items marked as Listed', 'success');
       if (activeView === 'inventory') loadInventory();

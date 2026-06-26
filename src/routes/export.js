@@ -118,13 +118,15 @@ router.post('/api/items/:id/export/poshmark', async (req, res) => {
 
 // ── Poshmark bulk ─────────────────────────────────────────────────────────────
 
+const POSHMARK_BATCH_SIZE = 39;
+
 router.get('/api/export/poshmark', async (req, res) => {
   const db    = getDb();
   const items = db.prepare(`SELECT * FROM items WHERE processing_status = 'done' ORDER BY id`).all();
   if (!items.length) return res.status(400).json({ error: '🌸 No ready items to export' });
 
   const q    = v => { const s = String(v||''); return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s; };
-  const rows = [];
+  const allRows = [];
 
   for (const item of items) {
     const photoIds = JSON.parse(item.photo_ids || '[]');
@@ -132,18 +134,32 @@ router.get('/api/export/poshmark', async (req, res) => {
     if (!photo) continue;
     const meta     = photo.metadata ? JSON.parse(photo.metadata) : {};
     const imageUrl = resolveImageUrl(item, photo, meta);
-    rows.push(buildPoshmarkRow(item, meta, imageUrl, q));
+    allRows.push({ row: buildPoshmarkRow(item, meta, imageUrl, q), item });
   }
 
+  const totalBatches = Math.ceil(allRows.length / POSHMARK_BATCH_SIZE);
+
+  // ?info=1 — return batch metadata as JSON (no download)
+  if (req.query.info) {
+    return res.json({ totalBatches, totalItems: allRows.length, batchSize: POSHMARK_BATCH_SIZE });
+  }
+
+  const batchNum = Math.max(1, Math.min(parseInt(req.query.batch) || 1, totalBatches));
+  const start    = (batchNum - 1) * POSHMARK_BATCH_SIZE;
+  const batch    = allRows.slice(start, start + POSHMARK_BATCH_SIZE);
+
   const today  = new Date().toISOString().slice(0, 10);
-  const csv    = [POSHMARK_HEADERS.join(','), ...rows].join('\r\n') + '\r\n';
+  const csv    = [POSHMARK_HEADERS.join(','), ...batch.map(b => b.row)].join('\r\n') + '\r\n';
   const userId = getUserId(req);
   const upsert = db.prepare(`INSERT INTO listings (user_id, item_id, platform, status, published_at, source) VALUES (?, ?, 'poshmark', 'published', ?, 'manual') ON CONFLICT(item_id, platform) DO UPDATE SET status='published', published_at=excluded.published_at`);
-  try { db.transaction(() => { for (const item of items) upsert.run(userId, item.id, today); })(); } catch (_) {}
+  try { db.transaction(() => { for (const { item } of batch) upsert.run(userId, item.id, today); })(); } catch (_) {}
 
+  const suffix = totalBatches > 1 ? `-part${batchNum}of${totalBatches}` : '';
   res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', `attachment; filename="poshmark-bulk-${today}.csv"`);
-  res.setHeader('X-Export-Item-Ids', JSON.stringify(items.map(i => i.id)));
+  res.setHeader('Content-Disposition', `attachment; filename="poshmark-bulk-${today}${suffix}.csv"`);
+  res.setHeader('X-Total-Batches', totalBatches);
+  res.setHeader('X-Batch-Number', batchNum);
+  res.setHeader('X-Export-Item-Ids', JSON.stringify(batch.map(b => b.item.id)));
   res.send(csv);
 });
 
