@@ -324,6 +324,7 @@ async function loadUsers() {
                 <td style="text-align:right;white-space:nowrap;display:flex;gap:6px;justify-content:flex-end">
                   ${isMe ? '<span class="you-tag">you</span>' : `
                     ${!isRevoked ? `<button class="btn btn-outline btn-role" onclick="changeRole(${u.id}, '${otherRole}')">${otherLabel}</button>` : ''}
+                    ${!isRevoked ? `<button class="btn btn-outline" style="font-size:11px;padding:4px 10px;color:#6644DF;border-color:#c4b5fd" onclick="viewAsUser(${u.id}, '${esc(u.email)}')">View as User</button>` : ''}
                     <button class="btn btn-outline ${isRevoked ? 'btn-restore' : 'btn-revoke'}" onclick="changeStatus(${u.id}, '${isRevoked ? 'active' : 'revoked'}')">
                       ${isRevoked ? 'Restore' : 'Revoke'}
                     </button>
@@ -335,6 +336,16 @@ async function loadUsers() {
       </table>`;
   } catch (e) {
     el.innerHTML = `<span style="color:#C0392B">Failed to load users: ${e.message}</span>`;
+  }
+}
+
+async function viewAsUser(userId, email) {
+  if (!confirm(`Enter support view as ${email}? All writes will be blocked.`)) return;
+  try {
+    await apiFetch(`/api/admin/impersonate/${userId}`, { method: 'POST' });
+    window.location.href = '/';
+  } catch (e) {
+    showToast(e.message, 'error');
   }
 }
 

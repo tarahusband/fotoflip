@@ -88,8 +88,32 @@ async function loadCurrentUser() {
       const adminLink = document.getElementById('navAdminLink');
       if (adminLink) adminLink.style.display = '';
     }
+    if (user.impersonating) {
+      showImpersonationBanner(user.impersonating);
+    }
   } catch (e) {
     if (e.message.includes('authenticated')) location.href = '/login';
+  }
+}
+
+function showImpersonationBanner(target) {
+  if (document.getElementById('impersonationBanner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'impersonationBanner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#7C3AED;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:10px 20px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.2)';
+  banner.innerHTML = `
+    <span>👁 Support view — viewing as <strong>${escHtml(target.email)}</strong> · Read-only</span>
+    <button onclick="exitImpersonation()" style="background:#fff;color:#7C3AED;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;">Exit Support View</button>`;
+  document.body.prepend(banner);
+  document.body.style.paddingTop = '42px';
+}
+
+async function exitImpersonation() {
+  try {
+    await apiFetch('/api/admin/impersonate/exit', { method: 'POST' });
+    window.location.href = '/admin';
+  } catch (e) {
+    alert('🌸 Could not exit support view: ' + e.message);
   }
 }
 

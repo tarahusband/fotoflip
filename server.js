@@ -94,6 +94,14 @@ if (process.env.NODE_ENV === 'test') {
 // All other routes require auth when GOOGLE_CLIENT_ID is set
 app.use(requireAuth);
 
+// Block all writes while admin is in impersonation/support mode
+app.use((req, res, next) => {
+  if (req.session?.impersonating_user_id && req.method !== 'GET' && req.path !== '/api/admin/impersonate/exit') {
+    return res.status(403).json({ error: '🌸 Writes are disabled in support view mode.' });
+  }
+  next();
+});
+
 // Admin panel — served only after role check; not in public/ so static can't bypass
 app.get('/admin', (req, res) => {
   if (req.user?.role !== 'admin') return res.redirect('/');

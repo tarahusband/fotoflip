@@ -150,6 +150,15 @@ function initDb() {
       status TEXT DEFAULT 'pending',
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS admin_impersonation_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      admin_id INTEGER NOT NULL REFERENCES users(id),
+      target_user_id INTEGER NOT NULL REFERENCES users(id),
+      started_at TEXT DEFAULT (datetime('now')),
+      ended_at TEXT,
+      ip_address TEXT
+    );
   `);
 
   // drop obsolete tables

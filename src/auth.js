@@ -108,7 +108,14 @@ function setupAuth(app, session) {
 
   app.get('/auth/me', (req, res) => {
     if (!req.user) return res.status(401).json({ error: '🌸 Not authenticated' });
-    res.json({ id: req.user.id, email: req.user.email, name: req.user.name, picture: req.user.picture, role: req.user.role });
+    const impId = req.session?.impersonating_user_id;
+    let impersonating = null;
+    if (impId) {
+      const db = getDb();
+      const target = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(impId);
+      if (target) impersonating = target;
+    }
+    res.json({ id: req.user.id, email: req.user.email, name: req.user.name, picture: req.user.picture, role: req.user.role, impersonating });
   });
 }
 
@@ -120,9 +127,10 @@ function requireAuth(req, res, next) {
   res.redirect('/login');
 }
 
-// Returns user_id for queries — null in dev mode (no auth)
+// Returns user_id for queries — uses impersonated user when admin is in support mode
 function getUserId(req) {
   if (!process.env.GOOGLE_CLIENT_ID) return null;
+  if (req.session?.impersonating_user_id) return req.session.impersonating_user_id;
   return req.user?.id || null;
 }
 
