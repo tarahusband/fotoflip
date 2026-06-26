@@ -175,6 +175,12 @@ function initDb() {
   if (!userCols.includes('onboarding_complete'))db.exec(`ALTER TABLE users ADD COLUMN onboarding_complete INTEGER DEFAULT 0`);
   if (!userCols.includes('last_login_at'))      db.exec(`ALTER TABLE users ADD COLUMN last_login_at TEXT`);
 
+  // Bootstrap: promote the first user to admin if no admin exists yet
+  const hasAdmin = db.prepare(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`).get();
+  if (!hasAdmin) {
+    db.prepare(`UPDATE users SET role = 'admin' WHERE id = (SELECT MIN(id) FROM users)`).run();
+  }
+
   // Backfill listings table from legacy export flags (run once — skips existing rows)
   backfillListings(db);
 
