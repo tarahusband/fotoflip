@@ -295,15 +295,15 @@
           <textarea id="fNotes" placeholder="Anything else you'd like us to know…"></textarea>
         </div>
 
-        <div class="field" style="gap:10px;display:flex;flex-direction:column;">
-          <label style="display:flex;align-items:flex-start;gap:10px;font-weight:normal;cursor:pointer;">
-            <input type="checkbox" id="fEmailConsent" style="margin-top:3px;flex-shrink:0;">
-            <span>I agree to receive account updates and communications from FotoFlip by email.</span>
-          </label>
-          <label style="display:flex;align-items:flex-start;gap:10px;font-weight:normal;cursor:pointer;">
-            <input type="checkbox" id="fSmsConsent" style="margin-top:3px;flex-shrink:0;">
-            <span>I agree to receive SMS notifications from FotoFlip. Message and data rates may apply. Reply STOP to opt out.</span>
-          </label>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+          <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;" onclick="document.getElementById('fEmailConsent').click()">
+            <input type="checkbox" id="fEmailConsent" style="width:16px;height:16px;flex-shrink:0;margin-top:2px;cursor:pointer;" onclick="event.stopPropagation()">
+            <span style="font-size:13px;color:#333;line-height:1.4;">I agree to receive account updates and communications from FotoFlip by email.</span>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;" onclick="document.getElementById('fSmsConsent').click()">
+            <input type="checkbox" id="fSmsConsent" style="width:16px;height:16px;flex-shrink:0;margin-top:2px;cursor:pointer;" onclick="event.stopPropagation()">
+            <span style="font-size:13px;color:#333;line-height:1.4;">I agree to receive SMS notifications from FotoFlip. Message and data rates may apply. Reply STOP to opt out.</span>
+          </div>
         </div>
 
         <button class="submit-btn" id="submitBtn" onclick="submitRequest()">Submit Request</button>
