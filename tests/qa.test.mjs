@@ -337,6 +337,143 @@ describe('Cloudinary-first photo pipeline (BUG-009)', () => {
   });
 });
 
+// ── TEST-001: TD-001 smoke suite — verify all route modules mounted ────────────
+
+describe('TD-001 smoke — route modules reachable (not 404)', () => {
+  // After the monolith split, a missing app.use() mount would cause 404.
+  // 401 is correct auth behaviour; 404 means the route file isn't mounted.
+
+  const ROUTES = [
+    // photos.js
+    { method: 'GET',  path: '/api/photos' },
+    // items.js
+    { method: 'GET',  path: '/api/items' },
+    { method: 'GET',  path: '/api/stats' },
+    // export.js — single-item routes need a real id; just verify module is mounted via 404 vs 401
+    { method: 'GET',  path: '/api/export/whatnot' },
+    { method: 'GET',  path: '/api/export/poshmark' },
+    // admin.js
+    { method: 'GET',  path: '/api/admin/health' },
+    { method: 'GET',  path: '/api/admin/backup' },
+    { method: 'GET',  path: '/api/admin/db-check' },
+    // settings.js
+    { method: 'GET',  path: '/api/settings' },
+    { method: 'GET',  path: '/api/settings/make-webhook' },
+    { method: 'GET',  path: '/api/profile' },
+    // inventory.js
+    { method: 'GET',  path: '/api/dashboard' },
+    { method: 'GET',  path: '/api/markets' },
+    { method: 'GET',  path: '/api/inventory' },
+    { method: 'GET',  path: '/api/inventory/stats' },
+    // listings.js
+    { method: 'GET',  path: '/api/listings' },
+  ];
+
+  for (const { method, path } of ROUTES) {
+    test(`${method} ${path} — responds (not 404)`, async () => {
+      const r = await fetch(`${BASE}${path}`, { method });
+      assert.notEqual(r.status, 404, `${method} ${path} returned 404 — route module not mounted`);
+    });
+  }
+});
+
+describe('TD-001 smoke — item lifecycle (create → edit → delete)', () => {
+  let createdItemId = null;
+
+  test('POST /api/items creates an item when photoIds are provided (or rejects cleanly)', async (t) => {
+    if (skipIfAuth(t)) return;
+    // Use a non-existent photoId — server should reject with 🌸 error, not crash
+    const { status, body } = await api('/api/items', {
+      method: 'POST',
+      body: JSON.stringify({ photoIds: [999999], purchaseDate: '2026-06-25' }),
+    });
+    assert.ok([400, 404].includes(status), `Expected 400/404, got ${status}`);
+    assert.ok(typeof body === 'object' && body.error, 'Should return JSON error');
+    assert.ok(body.error.startsWith('🌸'), `Error must start with 🌸, got: ${body.error}`);
+  });
+
+  test('PUT /api/items/:id updates status field', async (t) => {
+    if (skipIfAuth(t)) return;
+    const items = await getItems();
+    const target = items.find(i => i.id);
+    if (!target) { t.skip('no items'); return; }
+
+    const original = target.status;
+    const next     = original === 'Flip' ? 'Draft' : 'Flip';
+
+    const { status, body } = await api(`/api/items/${target.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: next }),
+    });
+    assert.equal(status, 200, `PUT returned ${status}: ${JSON.stringify(body)}`);
+    assert.ok(body.success || body.id, 'Response should indicate success');
+
+    // Restore
+    await api(`/api/items/${target.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: original }),
+    });
+  });
+
+  test('DELETE /api/items/:id — non-existent item returns 404 not crash', async (t) => {
+    if (skipIfAuth(t)) return;
+    const { status } = await api('/api/items/999999', { method: 'DELETE' });
+    assert.equal(status, 404, `Expected 404 for missing item, got ${status}`);
+  });
+});
+
+describe('TD-001 smoke — settings and profile round-trip', () => {
+  test('GET /api/settings returns object', async (t) => {
+    if (skipIfAuth(t)) return;
+    const { status, body } = await api('/api/settings');
+    assert.equal(status, 200);
+    assert.ok(typeof body === 'object' && !Array.isArray(body), 'Settings should be a key/value object');
+  });
+
+  test('PUT /api/settings writes and reads back a test key', async (t) => {
+    if (skipIfAuth(t)) return;
+    const testKey   = 'qa_test_key';
+    const testValue = `qa-${Date.now()}`;
+
+    const putRes = await api('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ [testKey]: testValue }),
+    });
+    assert.equal(putRes.status, 200);
+
+    const getRes = await api('/api/settings');
+    assert.equal(getRes.status, 200);
+    assert.equal(getRes.body[testKey], testValue, 'Written value should be readable back');
+  });
+
+  test('GET /api/inventory/stats returns correct shape', async (t) => {
+    if (skipIfAuth(t)) return;
+    const { status, body } = await api('/api/inventory/stats');
+    assert.equal(status, 200);
+    for (const key of ['total', 'ready', 'listed', 'sold', 'shipped']) {
+      assert.ok(key in body, `inventory/stats missing field: ${key}`);
+      assert.ok(typeof body[key] === 'number', `${key} should be a number`);
+    }
+  });
+
+  test('GET /api/listings returns array', async (t) => {
+    if (skipIfAuth(t)) return;
+    const { status, body } = await api('/api/listings');
+    assert.equal(status, 200);
+    assert.ok(Array.isArray(body), 'Listings should be an array');
+  });
+
+  test('GET /api/markets returns required shape', async (t) => {
+    if (skipIfAuth(t)) return;
+    const { status, body } = await api('/api/markets');
+    assert.equal(status, 200);
+    assert.ok('summary' in body,   'markets missing summary');
+    assert.ok('platforms' in body, 'markets missing platforms');
+    assert.ok('poshmark' in body.platforms, 'markets missing poshmark platform');
+    assert.ok('whatnot' in body.platforms,  'markets missing whatnot platform');
+  });
+});
+
 describe('Bundle label — 1080x1080 output', () => {
   test('Generated labeled image is a valid JPEG', async () => {
     const items = await getItems();

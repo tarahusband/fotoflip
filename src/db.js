@@ -121,6 +121,12 @@ function initDb() {
   if (!cols.includes('etsy_exported'))      db.exec(`ALTER TABLE items ADD COLUMN etsy_exported INTEGER DEFAULT 0`);
   if (!cols.includes('user_id'))            db.exec(`ALTER TABLE items ADD COLUMN user_id INTEGER REFERENCES users(id)`);
   if (!cols.includes('bundle_label_url'))   db.exec(`ALTER TABLE items ADD COLUMN bundle_label_url TEXT`);
+  // TD-002 — promoted metadata columns
+  if (!cols.includes('meta_title'))         db.exec(`ALTER TABLE items ADD COLUMN meta_title TEXT`);
+  if (!cols.includes('meta_price'))         db.exec(`ALTER TABLE items ADD COLUMN meta_price REAL`);
+  if (!cols.includes('meta_brand'))         db.exec(`ALTER TABLE items ADD COLUMN meta_brand TEXT`);
+  if (!cols.includes('meta_category'))      db.exec(`ALTER TABLE items ADD COLUMN meta_category TEXT`);
+  if (!cols.includes('meta_condition'))     db.exec(`ALTER TABLE items ADD COLUMN meta_condition TEXT`);
 
   const photoCols = db.pragma('table_info(photos)').map(c => c.name);
   if (!photoCols.includes('user_id'))         db.exec(`ALTER TABLE photos ADD COLUMN user_id INTEGER REFERENCES users(id)`);
@@ -158,6 +164,14 @@ function initDb() {
   // Backfill listings table from legacy export flags (run once — skips existing rows)
   backfillListings(db);
 
+  // TD-002 backfill — populate meta_* columns for items that have photo metadata
+  const itemsNeedingMeta = db.prepare(
+    `SELECT id FROM items WHERE meta_title IS NULL AND photo_ids IS NOT NULL`
+  ).all();
+  for (const row of itemsNeedingMeta) {
+    syncItemMeta(db, row.id);
+  }
+
   return db;
 }
 
@@ -191,6 +205,29 @@ function backfillListings(db) {
   insertMany(whatnotItems, 'whatnot');
 }
 
+function syncItemMeta(db, itemId) {
+  const item = db.prepare('SELECT photo_ids FROM items WHERE id = ?').get(itemId);
+  if (!item) return;
+  const photoIds = JSON.parse(item.photo_ids || '[]');
+  const photo = photoIds
+    .map(id => db.prepare('SELECT metadata FROM photos WHERE id = ?').get(id))
+    .filter(Boolean)[0];
+  if (!photo?.metadata) return;
+  try {
+    const meta = JSON.parse(photo.metadata);
+    db.prepare(
+      `UPDATE items SET meta_title=?, meta_price=?, meta_brand=?, meta_category=?, meta_condition=? WHERE id=?`
+    ).run(
+      meta.title        || null,
+      parseFloat(meta.suggestedPrice) || null,
+      meta.brand        || null,
+      meta.category     || null,
+      meta.conditionText || meta.condition || null,
+      itemId
+    );
+  } catch {}
+}
+
 function closeDb() {
   if (db) {
     db.close();
@@ -198,4 +235,4 @@ function closeDb() {
   }
 }
 
-module.exports = { getDb, initDb, closeDb, DB_PATH };
+module.exports = { getDb, initDb, closeDb, DB_PATH, syncItemMeta };
