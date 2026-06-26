@@ -97,7 +97,7 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'src', 'admin.html'));
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 app.use('/uploads',   express.static(UPLOAD_DIR));
 app.use('/processed', express.static(PROCESSED_DIR));
 
