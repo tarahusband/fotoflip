@@ -1,5 +1,5 @@
 const express   = require('express');
-const { getDb } = require('../db');
+const { getDb, getUserSetting } = require('../db');
 const { getUserId } = require('../auth');
 const { resolvePhotoUrl } = require('../lib/images');
 const { buildSku } = require('../lib/csv');
@@ -30,7 +30,7 @@ router.get('/api/dashboard', (req, res) => {
     platforms: db.prepare(`SELECT COUNT(DISTINCT platform) as n FROM listings WHERE status = 'published' ${userAnd}`).get().n,
   };
 
-  const makeUrl = db.prepare(`SELECT value FROM settings WHERE key='make_webhook_url'`).get()?.value || null;
+  const makeUrl = getUserSetting(db, userId, 'make_webhook_url');
   const platforms = {
     poshmark: { connected: true, count: db.prepare(`SELECT COUNT(*) as n FROM listings WHERE platform='poshmark' AND status='published' ${userAnd}`).get().n },
     whatnot:  { connected: true, count: db.prepare(`SELECT COUNT(*) as n FROM listings WHERE platform='whatnot'  AND status='published' ${userAnd}`).get().n },
@@ -80,9 +80,9 @@ router.get('/api/dashboard', (req, res) => {
     date:  imp.latestDate,
   }));
 
-  const poshCount  = db.prepare(`SELECT COUNT(*) as n FROM items WHERE poshmark_exported = 1`).get().n;
-  const whatCount  = db.prepare(`SELECT COUNT(*) as n FROM items WHERE whatnot_exported = 1`).get().n;
-  const latestExport = db.prepare(`SELECT date_listed FROM items WHERE date_listed IS NOT NULL ORDER BY date_listed DESC LIMIT 1`).get();
+  const poshCount  = db.prepare(`SELECT COUNT(*) as n FROM items WHERE poshmark_exported = 1 ${userAnd}`).get().n;
+  const whatCount  = db.prepare(`SELECT COUNT(*) as n FROM items WHERE whatnot_exported = 1 ${userAnd}`).get().n;
+  const latestExport = db.prepare(`SELECT date_listed FROM items WHERE date_listed IS NOT NULL ${userAnd} ORDER BY date_listed DESC LIMIT 1`).get();
 
   if (poshCount && latestExport) activity.push({ type: 'poshmark', label: `Poshmark CSV generated (${poshCount} item${poshCount !== 1 ? 's' : ''})`, date: latestExport.date_listed });
   if (whatCount && latestExport) activity.push({ type: 'whatnot', label: `Whatnot CSV generated (${whatCount} item${whatCount !== 1 ? 's' : ''})`, date: latestExport.date_listed });
@@ -197,16 +197,28 @@ router.get('/api/inventory', (req, res) => {
 });
 
 router.get('/api/inventory/stats', (req, res) => {
-  const db = getDb();
+  const db     = getDb();
+  const userId = getUserId(req);
+
+  const count = (status) => {
+    if (userId) {
+      return db.prepare(`SELECT COUNT(*) as n FROM items WHERE user_id = ? AND inv_status = ?`).get(userId, status).n;
+    }
+    return db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = ?`).get(status).n;
+  };
+  const total = userId
+    ? db.prepare(`SELECT COUNT(*) as n FROM items WHERE user_id = ?`).get(userId).n
+    : db.prepare(`SELECT COUNT(*) as n FROM items`).get().n;
+
   res.json({
-    total:    db.prepare(`SELECT COUNT(*) as n FROM items`).get().n,
-    ready:    db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'ready'`).get().n,
-    listed:   db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'listed'`).get().n,
-    sold:     db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'sold'`).get().n,
-    shipped:  db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'shipped'`).get().n,
-    archived: db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'archived'`).get().n,
-    review:   db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'review'`).get().n,
-    draft:    db.prepare(`SELECT COUNT(*) as n FROM items WHERE inv_status = 'draft'`).get().n,
+    total,
+    ready:    count('ready'),
+    listed:   count('listed'),
+    sold:     count('sold'),
+    shipped:  count('shipped'),
+    archived: count('archived'),
+    review:   count('review'),
+    draft:    count('draft'),
   });
 });
 

@@ -64,7 +64,17 @@ function setupAuth(app, session) {
 
   app.get('/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/login?error=1' }),
-    (req, res) => res.redirect('/')
+    (req, res) => {
+      // BETA-001 — invite gate: admin always passes; everyone else must be on the allow list
+      if (req.user?.role !== 'admin') {
+        const db = getDb();
+        const allowed = db.prepare('SELECT id FROM allowed_users WHERE email = ?').get(req.user?.email);
+        if (!allowed) {
+          return req.logout(() => res.redirect('/not-invited'));
+        }
+      }
+      res.redirect('/');
+    }
   );
 
   app.get('/auth/logout', (req, res) => {
@@ -73,7 +83,7 @@ function setupAuth(app, session) {
 
   app.get('/auth/me', (req, res) => {
     if (!req.user) return res.status(401).json({ error: '🌸 Not authenticated' });
-    res.json({ id: req.user.id, email: req.user.email, name: req.user.name, picture: req.user.picture });
+    res.json({ id: req.user.id, email: req.user.email, name: req.user.name, picture: req.user.picture, role: req.user.role });
   });
 }
 

@@ -95,6 +95,77 @@ router.post('/api/admin/normalize-titles', requireAdmin, (req, res) => {
   res.json({ done, skipped });
 });
 
+// ── ADMIN-002: User management ───────────────────────────────────────────────
+
+router.get('/api/admin/users', requireAdmin, (req, res) => {
+  const db    = getDb();
+  const users = db.prepare(`
+    SELECT u.id, u.email, u.name, u.role, u.last_login_at, u.created_at,
+           COUNT(i.id) as item_count
+    FROM users u
+    LEFT JOIN items i ON i.user_id = u.id
+    GROUP BY u.id
+    ORDER BY u.created_at ASC
+  `).all();
+  res.json(users);
+});
+
+router.patch('/api/admin/users/:id/role', requireAdmin, express.json(), (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  const { role } = req.body || {};
+
+  if (!['admin', 'user'].includes(role)) {
+    return res.status(400).json({ error: '🌸 Role must be "admin" or "user"' });
+  }
+  if (targetId === req.user.id) {
+    return res.status(400).json({ error: '🌸 You cannot change your own role' });
+  }
+
+  const db   = getDb();
+  const user = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
+  if (!user) return res.status(404).json({ error: '🌸 User not found' });
+
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
+  res.json({ ok: true, id: targetId, role });
+});
+
+// ── BETA-001: Allow list management ──────────────────────────────────────────
+
+router.get('/api/admin/allowed-users', requireAdmin, (req, res) => {
+  const db = getDb();
+  const list = db.prepare(
+    'SELECT id, email, added_at FROM allowed_users ORDER BY added_at DESC'
+  ).all();
+  res.json(list);
+});
+
+router.post('/api/admin/allowed-users', requireAdmin, express.json(), (req, res) => {
+  const email = (req.body?.email || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: '🌸 Valid email address required' });
+  }
+  const db = getDb();
+  try {
+    db.prepare('INSERT INTO allowed_users (email, added_by) VALUES (?, ?)').run(email, req.user.id);
+    res.json({ ok: true, email });
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) {
+      return res.status(409).json({ error: '🌸 That email is already on the allow list' });
+    }
+    throw e;
+  }
+});
+
+router.delete('/api/admin/allowed-users/:email', requireAdmin, (req, res) => {
+  const email = decodeURIComponent(req.params.email).trim().toLowerCase();
+  const db = getDb();
+  const r = db.prepare('DELETE FROM allowed_users WHERE email = ?').run(email);
+  if (r.changes === 0) return res.status(404).json({ error: '🌸 Email not found on allow list' });
+  res.json({ ok: true, email });
+});
+
+// ── Content management ────────────────────────────────────────────────────────
+
 router.post('/api/admin/regenerate-labels', requireAdmin, async (req, res) => {
   const db    = getDb();
   const items = db.prepare(`SELECT * FROM items WHERE is_bundle = 1`).all();

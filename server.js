@@ -27,10 +27,25 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+app.get('/not-invited', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'not-invited.html'));
+});
+
 app.get('/health', (req, res) => res.json({ ok: true, v: '2026-06-25' }));
+
+// Test-only routes — must come before requireAuth so they can create sessions
+if (process.env.NODE_ENV === 'test') {
+  app.use(require('./src/routes/test'));
+}
 
 // All other routes require auth when GOOGLE_CLIENT_ID is set
 app.use(requireAuth);
+
+// Admin panel — served only after role check; not in public/ so static can't bypass
+app.get('/admin', (req, res) => {
+  if (req.user?.role !== 'admin') return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'src', 'admin.html'));
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads',   express.static(UPLOAD_DIR));

@@ -43,11 +43,16 @@ async function loadCurrentUser() {
   try {
     const user = await apiFetch('/auth/me');
     const el = document.getElementById('navUser');
-    if (!el) return;
-    el.innerHTML = `
-      ${user.picture ? `<img class="nav-user-pic" src="${user.picture}" referrerpolicy="no-referrer">` : ''}
-      <span class="nav-user-name">${user.name || user.email}</span>
-      <button class="nav-logout" onclick="location.href='/auth/logout'" title="Sign out">↪</button>`;
+    if (el) {
+      el.innerHTML = `
+        ${user.picture ? `<img class="nav-user-pic" src="${user.picture}" referrerpolicy="no-referrer">` : ''}
+        <span class="nav-user-name">${user.name || user.email}</span>
+        <button class="nav-logout" onclick="location.href='/auth/logout'" title="Sign out">↪</button>`;
+    }
+    if (user.role === 'admin') {
+      const adminLink = document.getElementById('navAdminLink');
+      if (adminLink) adminLink.style.display = '';
+    }
   } catch (e) {
     if (e.message.includes('authenticated')) location.href = '/login';
   }
@@ -160,6 +165,7 @@ async function exportAllPoshmark(btn) {
     const allExportedIds = [];
 
     for (let batch = 1; batch <= info.totalBatches; batch++) {
+      if (info.totalBatches > 1) toast(`Downloading part ${batch} of ${info.totalBatches}…`, 'info');
       const res = await fetch(`/api/export/poshmark?batch=${batch}`);
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -174,7 +180,7 @@ async function exportAllPoshmark(btn) {
       const suffix = info.totalBatches > 1 ? `-part${batch}of${info.totalBatches}` : '';
       a.href = url; a.download = `poshmark-bulk-${today}${suffix}.csv`; a.click();
       URL.revokeObjectURL(url);
-      if (info.totalBatches > 1) await new Promise(r => setTimeout(r, 400));
+      if (batch < info.totalBatches) await new Promise(r => setTimeout(r, 600));
     }
 
     const msg = info.totalBatches > 1

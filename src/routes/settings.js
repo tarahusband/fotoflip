@@ -1,35 +1,40 @@
 const express   = require('express');
-const { getDb } = require('../db');
+const { getDb, getUserSetting, setUserSetting, getAllUserSettings } = require('../db');
 const { getUserId } = require('../auth');
 
 const router = express.Router();
 
 router.get('/api/settings', (req, res) => {
-  const db   = getDb();
-  const rows = db.prepare(`SELECT key, value FROM settings`).all();
-  res.json(Object.fromEntries(rows.map(r => [r.key, r.value])));
+  const db     = getDb();
+  const userId = getUserId(req);
+  res.json(getAllUserSettings(db, userId));
 });
 
 router.put('/api/settings', (req, res) => {
-  const db = getDb();
+  const db     = getDb();
+  const userId = getUserId(req);
   for (const [key, value] of Object.entries(req.body)) {
-    db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`).run(key, String(value));
+    setUserSetting(db, userId, key, value);
   }
   res.json({ success: true });
 });
 
 router.post('/api/settings/make-webhook', (req, res) => {
   const { url } = req.body;
-  if (!url || !url.startsWith('https://hook.')) return res.status(400).json({ error: '🌸 Invalid webhook URL — must start with https://hook.' });
-  const db = getDb();
-  db.prepare(`INSERT OR REPLACE INTO settings (key,value) VALUES ('make_webhook_url',?)`).run(url);
+  if (!url || !url.startsWith('https://hook.')) {
+    return res.status(400).json({ error: '🌸 Invalid webhook URL — must start with https://hook.' });
+  }
+  const db     = getDb();
+  const userId = getUserId(req);
+  setUserSetting(db, userId, 'make_webhook_url', url);
   res.json({ success: true });
 });
 
 router.get('/api/settings/make-webhook', (req, res) => {
-  const db  = getDb();
-  const row = db.prepare(`SELECT value FROM settings WHERE key='make_webhook_url'`).get();
-  res.json({ url: row?.value || '' });
+  const db     = getDb();
+  const userId = getUserId(req);
+  const url    = getUserSetting(db, userId, 'make_webhook_url');
+  res.json({ url: url || '' });
 });
 
 router.get('/api/profile', (req, res) => {

@@ -98,6 +98,20 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(status);
     CREATE INDEX IF NOT EXISTS idx_listings_item ON listings(item_id);
     CREATE INDEX IF NOT EXISTS idx_listings_user ON listings(user_id);
+
+    CREATE TABLE IF NOT EXISTS allowed_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      added_by INTEGER REFERENCES users(id),
+      added_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      key TEXT NOT NULL,
+      value TEXT,
+      PRIMARY KEY (user_id, key)
+    );
   `);
 
   // drop obsolete tables
@@ -228,6 +242,35 @@ function syncItemMeta(db, itemId) {
   } catch {}
 }
 
+// ── MU-003: Per-user settings helpers ────────────────────────────────────────
+// When userId is null (dev mode / no auth), fall back to the global settings table.
+
+function getUserSetting(db, userId, key) {
+  if (userId) {
+    const row = db.prepare('SELECT value FROM user_settings WHERE user_id = ? AND key = ?').get(userId, key);
+    return row?.value ?? null;
+  }
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return row?.value ?? null;
+}
+
+function setUserSetting(db, userId, key, value) {
+  if (userId) {
+    db.prepare('INSERT OR REPLACE INTO user_settings (user_id, key, value) VALUES (?, ?, ?)').run(userId, key, String(value));
+  } else {
+    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, String(value));
+  }
+}
+
+function getAllUserSettings(db, userId) {
+  if (userId) {
+    const rows = db.prepare('SELECT key, value FROM user_settings WHERE user_id = ?').all(userId);
+    return Object.fromEntries(rows.map(r => [r.key, r.value]));
+  }
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  return Object.fromEntries(rows.map(r => [r.key, r.value]));
+}
+
 function closeDb() {
   if (db) {
     db.close();
@@ -235,4 +278,4 @@ function closeDb() {
   }
 }
 
-module.exports = { getDb, initDb, closeDb, DB_PATH, syncItemMeta };
+module.exports = { getDb, initDb, closeDb, DB_PATH, syncItemMeta, getUserSetting, setUserSetting, getAllUserSettings };

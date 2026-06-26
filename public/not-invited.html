@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FotoFlip — Invite Only</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #FAF6F1;
+      color: #1E1E1E;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #E0DDD8;
+      border-radius: 12px;
+      padding: 48px 40px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 28px;
+      font-weight: 700;
+      color: #6644DF;
+      letter-spacing: -0.5px;
+      margin-bottom: 32px;
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    p {
+      font-size: 14px;
+      color: #555;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #E0DDD8;
+      margin: 28px 0;
+    }
+
+    a.btn {
+      display: inline-block;
+      padding: 10px 24px;
+      background: #6644DF;
+      color: #fff;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    a.btn:hover { background: #5535c5; }
+
+    .hint {
+      font-size: 12px;
+      color: #999;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">FotoFlip</div>
+    <h1>This is an invite-only beta.</h1>
+    <p>
+      FotoFlip is currently only available to invited users.
+      If you were given access, make sure you're signing in with
+      the correct Google account.
+    </p>
+    <p>
+      If you'd like to request an invite, reach out directly to the team.
+    </p>
+    <hr class="divider">
+    <a class="btn" href="/login">Sign in with a different account</a>
+    <p class="hint">You were signed out automatically.</p>
+  </div>
+</body>
+</html>

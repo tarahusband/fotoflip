@@ -2,7 +2,7 @@ const express = require('express');
 const path    = require('path');
 const fs      = require('fs').promises;
 const crypto  = require('crypto');
-const { getDb }     = require('../db');
+const { getDb, getUserSetting, setUserSetting } = require('../db');
 const { getUserId } = require('../auth');
 const { buildSku, POSHMARK_HEADERS, buildPoshmarkRow, whatnotCategoryMap, whatnotDescription, whatnotCondition, whatnotShipping, etsyCategoryMap } = require('../lib/csv');
 
@@ -183,16 +183,17 @@ router.get('/auth/etsy/callback', async (req, res) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'authorization_code', client_id: ETSY_API_KEY, redirect_uri: ETSY_REDIRECT, code, code_verifier: etsyPKCE.verifier }),
     });
-    const token = await tokenRes.json();
+    const token  = await tokenRes.json();
     if (!token.access_token) throw new Error(JSON.stringify(token));
-    const db = getDb();
-    db.prepare(`INSERT OR REPLACE INTO settings (key,value) VALUES ('etsy_access_token',?)`).run(token.access_token);
-    db.prepare(`INSERT OR REPLACE INTO settings (key,value) VALUES ('etsy_refresh_token',?)`).run(token.refresh_token || '');
-    db.prepare(`INSERT OR REPLACE INTO settings (key,value) VALUES ('etsy_user_id',?)`).run(String(token.access_token.split('.')[0]));
+    const db     = getDb();
+    const userId = getUserId(req);
+    setUserSetting(db, userId, 'etsy_access_token',  token.access_token);
+    setUserSetting(db, userId, 'etsy_refresh_token', token.refresh_token || '');
+    setUserSetting(db, userId, 'etsy_user_id',       String(token.access_token.split('.')[0]));
     etsyPKCE = null;
     const meRes = await fetch('https://api.etsy.com/v3/application/users/me', { headers: { 'x-api-key': ETSY_API_KEY, 'Authorization': `Bearer ${token.access_token}` } });
     const me    = await meRes.json();
-    if (me.shop_id) db.prepare(`INSERT OR REPLACE INTO settings (key,value) VALUES ('etsy_shop_id',?)`).run(String(me.shop_id));
+    if (me.shop_id) setUserSetting(db, userId, 'etsy_shop_id', String(me.shop_id));
     res.send(`<html><body style="font-family:sans-serif;padding:40px;text-align:center"><h2>✓ Etsy connected!</h2><p>Shop ID: ${me.shop_id || 'saved'}</p><p><a href="/">Return to FotoFlip</a></p></body></html>`);
   } catch (err) {
     res.status(500).send(`OAuth error: ${err.message}`);
@@ -200,16 +201,18 @@ router.get('/auth/etsy/callback', async (req, res) => {
 });
 
 router.get('/api/etsy/status', (req, res) => {
-  const db    = getDb();
-  const token  = db.prepare(`SELECT value FROM settings WHERE key='etsy_access_token'`).get();
-  const shopId = db.prepare(`SELECT value FROM settings WHERE key='etsy_shop_id'`).get();
-  res.json({ connected: !!(token?.value), shopId: shopId?.value || null });
+  const db     = getDb();
+  const userId = getUserId(req);
+  const token  = getUserSetting(db, userId, 'etsy_access_token');
+  const shopId = getUserSetting(db, userId, 'etsy_shop_id');
+  res.json({ connected: !!token, shopId: shopId || null });
 });
 
 router.post('/api/items/:id/export/etsy', async (req, res) => {
   const db     = getDb();
-  const token  = db.prepare(`SELECT value FROM settings WHERE key='etsy_access_token'`).get()?.value;
-  const shopId = db.prepare(`SELECT value FROM settings WHERE key='etsy_shop_id'`).get()?.value;
+  const userId = getUserId(req);
+  const token  = getUserSetting(db, userId, 'etsy_access_token');
+  const shopId = getUserSetting(db, userId, 'etsy_shop_id');
   if (!token || !shopId) return res.status(400).json({ error: '🌸 Etsy not connected — click Connect Etsy first' });
 
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
@@ -259,7 +262,7 @@ router.post('/api/items/:id/export/etsy', async (req, res) => {
 
 router.post('/api/items/:id/export/make', async (req, res) => {
   const db         = getDb();
-  const webhookUrl = db.prepare(`SELECT value FROM settings WHERE key='make_webhook_url'`).get()?.value;
+  const webhookUrl = getUserSetting(db, getUserId(req), 'make_webhook_url');
   if (!webhookUrl) return res.status(400).json({ error: '🌸 Make.com webhook not configured — add it in Settings' });
 
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);

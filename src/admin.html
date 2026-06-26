@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FotoFlip Admin</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --purple: #6644DF;
+      --purple-dark: #5535c5;
+      --blue: #338A8F;
+      --dark: #1E1E1E;
+      --light: #F5F5F5;
+      --cream: #FAF6F1;
+      --border: #E0DDD8;
+      --red: #C0392B;
+      --green: #27AE60;
+      --radius: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--cream);
+      color: var(--dark);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .admin-header {
+      background: var(--dark);
+      color: #fff;
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .admin-header .brand { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    .admin-header .brand span { color: var(--purple); }
+    .admin-header .badge { font-size: 11px; background: var(--purple); color: #fff; padding: 2px 8px; border-radius: 10px; margin-left: 8px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .admin-header a { color: #aaa; font-size: 13px; text-decoration: none; }
+    .admin-header a:hover { color: #fff; }
+
+    /* ── Layout ── */
+    .admin-body { max-width: 900px; margin: 0 auto; padding: 32px 24px 64px; }
+
+    /* ── Sections ── */
+    .section { margin-bottom: 32px; }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #888;
+      margin-bottom: 12px;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+    }
+
+    .card + .card { margin-top: 12px; }
+
+    /* ── Health grid ── */
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+
+    .health-stat {
+      background: var(--light);
+      border-radius: 6px;
+      padding: 14px 16px;
+    }
+
+    .health-stat .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .health-stat .value { font-size: 22px; font-weight: 700; }
+    .health-stat.ok .value  { color: var(--green); }
+    .health-stat.err .value { color: var(--red); }
+    .health-stat.num .value { color: var(--dark); }
+
+    /* ── Allow list ── */
+    .add-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .add-row input {
+      flex: 1;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .add-row input:focus { border-color: var(--purple); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #888; padding: 6px 0 8px; border-bottom: 1px solid var(--border); }
+    td { padding: 10px 0; border-bottom: 1px solid var(--light); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+
+    .email-cell { font-weight: 500; }
+    .date-cell  { color: #888; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn:not(:disabled):hover { opacity: 0.85; }
+
+    .btn-primary { background: var(--purple); color: #fff; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--dark); }
+    .btn-danger  { background: transparent; border: 1px solid #f5c6c2; color: var(--red); padding: 5px 10px; font-size: 12px; }
+
+    /* ── Actions grid ── */
+    .actions-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      display: none;
+      z-index: 100;
+    }
+
+    #toast.show { display: block; }
+    #toast.success { background: #E8F5E9; color: #2E7D32; border: 1px solid #C8E6C9; }
+    #toast.error   { background: #FFEBEE; color: var(--red); border: 1px solid #FFCDD2; }
+
+    .empty { color: #aaa; font-size: 13px; padding: 12px 0; }
+    .spinner { color: #aaa; font-size: 13px; }
+
+    .role-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .role-badge.admin { background: #EDE9FB; color: var(--purple); }
+    .role-badge.user  { background: var(--light); color: #666; }
+
+    .btn-role { font-size: 11px; padding: 4px 10px; }
+    .you-tag  { font-size: 11px; color: #aaa; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<header class="admin-header">
+  <div style="display:flex;align-items:center;gap:4px;">
+    <span class="brand">Foto<span>Flip</span></span>
+    <span class="badge">Admin</span>
+  </div>
+  <a href="/">← Back to app</a>
+</header>
+
+<div class="admin-body">
+
+  <!-- Health -->
+  <div class="section">
+    <div class="section-title">System Health</div>
+    <div class="card">
+      <div id="healthContent" class="spinner">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Users -->
+  <div class="section">
+    <div class="section-title">Users</div>
+    <div class="card">
+      <div id="usersContent" class="spinner">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Allow List -->
+  <div class="section">
+    <div class="section-title">Invite List</div>
+    <div class="card">
+      <div class="add-row">
+        <input type="email" id="addEmailInput" placeholder="user@example.com" autocomplete="off">
+        <button class="btn btn-primary" onclick="addEmail()">Add</button>
+      </div>
+      <div id="allowedContent" class="spinner">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="section">
+    <div class="section-title">Quick Actions</div>
+    <div class="card">
+      <div class="actions-grid">
+        <a class="btn btn-outline" href="/api/admin/backup">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Backup
+        </a>
+        <button class="btn btn-outline" onclick="runAction('/api/admin/normalize-titles', 'Normalize Titles')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/></svg>
+          Normalize Titles
+        </button>
+        <button class="btn btn-outline" onclick="runAction('/api/admin/regenerate-labels', 'Regenerate Labels')">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Regenerate Labels
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = '';
+let currentUserId = null;
+
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = ''; }, 3500);
+}
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  if (res.status === 401) { location.href = '/login'; return; }
+  if (res.status === 403) { location.href = '/'; return; }
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  }
+  if (!res.ok) throw new Error(res.statusText);
+  return res;
+}
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+async function loadUsers() {
+  const el = document.getElementById('usersContent');
+  try {
+    const users = await apiFetch('/api/admin/users');
+    if (!users.length) { el.innerHTML = '<div class="empty">No users yet.</div>'; return; }
+    el.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Role</th>
+            <th style="text-align:right">Items</th>
+            <th>Last login</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${users.map(u => {
+            const isMe = u.id === currentUserId;
+            const otherRole = u.role === 'admin' ? 'user' : 'admin';
+            const otherLabel = u.role === 'admin' ? 'Demote' : 'Promote';
+            return `
+              <tr>
+                <td>
+                  <div style="font-weight:500">${esc(u.name || u.email)}</div>
+                  <div style="font-size:12px;color:#888">${esc(u.email)}</div>
+                </td>
+                <td><span class="role-badge ${u.role}">${u.role}</span></td>
+                <td style="text-align:right;color:#888">${u.item_count}</td>
+                <td style="color:#888;font-size:12px">${u.last_login_at ? u.last_login_at.slice(0, 10) : '—'}</td>
+                <td style="text-align:right">
+                  ${isMe
+                    ? '<span class="you-tag">you</span>'
+                    : `<button class="btn btn-outline btn-role" onclick="changeRole(${u.id}, '${otherRole}')">${otherLabel}</button>`
+                  }
+                </td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    el.innerHTML = `<span style="color:#C0392B">Failed to load users: ${e.message}</span>`;
+  }
+}
+
+async function changeRole(userId, role) {
+  const action = role === 'admin' ? 'promote to admin' : 'demote to user';
+  if (!confirm(`Are you sure you want to ${action}?`)) return;
+  try {
+    await apiFetch(`/api/admin/users/${userId}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+    showToast(`Role updated to ${role}`);
+    await loadUsers();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ── Health ────────────────────────────────────────────────────────────────────
+
+async function loadHealth() {
+  const el = document.getElementById('healthContent');
+  try {
+    const h = await apiFetch('/api/admin/health');
+    el.innerHTML = `
+      <div class="health-grid">
+        <div class="health-stat ${h.db_connected ? 'ok' : 'err'}">
+          <div class="label">Database</div>
+          <div class="value">${h.db_connected ? 'OK' : 'ERROR'}</div>
+        </div>
+        <div class="health-stat num">
+          <div class="label">Items</div>
+          <div class="value">${h.items}</div>
+        </div>
+        <div class="health-stat num">
+          <div class="label">Photos</div>
+          <div class="value">${h.photos}</div>
+        </div>
+        <div class="health-stat ${h.missing_thumbnails === 0 ? 'ok' : 'err'}">
+          <div class="label">Missing URLs</div>
+          <div class="value">${h.missing_thumbnails}</div>
+        </div>
+        <div class="health-stat ${h.cloudinary_configured ? 'ok' : 'err'}">
+          <div class="label">Cloudinary</div>
+          <div class="value">${h.cloudinary_configured ? 'OK' : 'MISSING'}</div>
+        </div>
+        <div class="health-stat ${h.anthropic_configured ? 'ok' : 'err'}">
+          <div class="label">AI</div>
+          <div class="value">${h.anthropic_configured ? 'OK' : 'MISSING'}</div>
+        </div>
+      </div>`;
+  } catch (e) {
+    el.innerHTML = `<span style="color:#C0392B">Failed to load health: ${e.message}</span>`;
+  }
+}
+
+// ── Allow List ────────────────────────────────────────────────────────────────
+
+async function loadAllowedUsers() {
+  const el = document.getElementById('allowedContent');
+  try {
+    const list = await apiFetch('/api/admin/allowed-users');
+    if (!list.length) {
+      el.innerHTML = '<div class="empty">No invited users yet.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Email</th><th>Added</th><th></th></tr></thead>
+        <tbody>
+          ${list.map(u => `
+            <tr>
+              <td class="email-cell">${esc(u.email)}</td>
+              <td class="date-cell">${u.added_at ? u.added_at.slice(0, 10) : '—'}</td>
+              <td style="text-align:right">
+                <button class="btn btn-danger" onclick="removeEmail('${esc(u.email)}')">Remove</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (e) {
+    el.innerHTML = `<span style="color:#C0392B">Failed to load list: ${e.message}</span>`;
+  }
+}
+
+async function addEmail() {
+  const input = document.getElementById('addEmailInput');
+  const email = input.value.trim();
+  if (!email) return;
+  try {
+    await apiFetch('/api/admin/allowed-users', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+    input.value = '';
+    showToast(`${email} added to invite list`);
+    await loadAllowedUsers();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function removeEmail(email) {
+  if (!confirm(`Remove ${email} from the invite list?`)) return;
+  try {
+    await apiFetch(`/api/admin/allowed-users/${encodeURIComponent(email)}`, { method: 'DELETE' });
+    showToast(`${email} removed`);
+    await loadAllowedUsers();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ── Quick Actions ─────────────────────────────────────────────────────────────
+
+async function runAction(path, label) {
+  if (!confirm(`Run "${label}"? This cannot be undone.`)) return;
+  try {
+    const result = await apiFetch(path, { method: 'POST' });
+    const detail = result.done !== undefined ? ` (${result.done} updated, ${result.skipped} skipped)` : '';
+    showToast(`${label} complete${detail}`);
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Submit on enter in email input ────────────────────────────────────────────
+
+document.getElementById('addEmailInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addEmail();
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+(async () => {
+  try {
+    const me = await apiFetch('/auth/me');
+    currentUserId = me.id;
+  } catch {}
+  loadHealth();
+  loadUsers();
+  loadAllowedUsers();
+})();
+</script>
+</body>
+</html>
