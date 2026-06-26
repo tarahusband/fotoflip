@@ -27,9 +27,11 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-app.get('/not-invited', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'not-invited.html'));
-});
+app.get('/not-invited',    (req, res) => res.sendFile(path.join(__dirname, 'public', 'not-invited.html')));
+app.get('/privacy',        (req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy.html')));
+app.get('/terms',          (req, res) => res.sendFile(path.join(__dirname, 'public', 'terms.html')));
+app.get('/do-not-sell',    (req, res) => res.sendFile(path.join(__dirname, 'public', 'do-not-sell.html')));
+app.get('/privacy-request',(req, res) => res.sendFile(path.join(__dirname, 'public', 'privacy-request.html')));
 
 app.get('/health', (req, res) => res.json({ ok: true, v: '2026-06-26' }));
 
