@@ -133,6 +133,11 @@
       font-size: 12px;
       margin-left: 4px;
     }
+    .field label .req, .req {
+      color: #c0392b;
+      margin-left: 2px;
+      font-weight: 400;
+    }
 
     .field input,
     .field select,
@@ -233,22 +238,22 @@
 
         <div class="field-row">
           <div class="field">
-            <label>First name</label>
+            <label>First name <span class="req">*</span></label>
             <input type="text" id="fFirstName" placeholder="Jane" autocomplete="given-name">
           </div>
           <div class="field">
-            <label>Email</label>
+            <label>Email <span class="req">*</span></label>
             <input type="email" id="fEmail" placeholder="you@example.com" autocomplete="email">
           </div>
         </div>
 
         <div class="field">
-          <label>Seller username / handle</label>
+          <label>Seller username / handle <span class="req">*</span></label>
           <input type="text" id="fHandle" placeholder="e.g. @bocabelle">
         </div>
 
         <div class="field">
-          <label>Where do you sell most often?</label>
+          <label>Where do you sell most often? <span class="req">*</span></label>
           <select id="fSellsOn">
             <option value="">Select a platform…</option>
             <option>Poshmark</option>
@@ -264,12 +269,12 @@
         </div>
 
         <div class="field">
-          <label>What do you usually sell?</label>
+          <label>What do you usually sell? <span class="req">*</span></label>
           <input type="text" id="fSellsWhat" placeholder="e.g. vintage jewelry, designer handbags, sneakers">
         </div>
 
         <div class="field">
-          <label>Approximate inventory size</label>
+          <label>Approximate inventory size <span class="req">*</span></label>
           <select id="fInventorySize">
             <option value="">Select a range…</option>
             <option>Under 25 items</option>
@@ -281,7 +286,7 @@
 
         <div class="field-row">
           <div class="field">
-            <label>Phone</label>
+            <label>Phone <span class="req">*</span></label>
             <input type="tel" id="fPhone" placeholder="(555) 000-0000" autocomplete="tel" required>
           </div>
           <div class="field">
@@ -298,11 +303,11 @@
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
           <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;" onclick="document.getElementById('fEmailConsent').click()">
             <input type="checkbox" id="fEmailConsent" style="width:16px;height:16px;flex-shrink:0;margin-top:2px;cursor:pointer;" onclick="event.stopPropagation()">
-            <span style="font-size:13px;color:#333;line-height:1.4;">I agree to receive account updates and communications from FotoFlip by email.</span>
+            <span style="font-size:13px;color:#333;line-height:1.4;">I agree to receive account updates and communications from FotoFlip by email. <span class="req">*</span></span>
           </div>
           <div style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;" onclick="document.getElementById('fSmsConsent').click()">
             <input type="checkbox" id="fSmsConsent" style="width:16px;height:16px;flex-shrink:0;margin-top:2px;cursor:pointer;" onclick="event.stopPropagation()">
-            <span style="font-size:13px;color:#333;line-height:1.4;">I agree to receive SMS notifications from FotoFlip. Message and data rates may apply. Reply STOP to opt out.</span>
+            <span style="font-size:13px;color:#333;line-height:1.4;">I agree to receive SMS notifications from FotoFlip. Message and data rates may apply. Reply STOP to opt out. <span class="req">*</span></span>
           </div>
         </div>
 
