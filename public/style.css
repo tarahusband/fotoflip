@@ -126,7 +126,7 @@ body {
   align-items: center;
   gap: 10px;
   padding: 12px 4px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
   margin-bottom: 4px;
 }
 
@@ -139,7 +139,7 @@ body {
 }
 
 .nav-avatar-init {
-  background: var(--purple);
+  background: #7C5C3A;
   color: #fff;
   display: flex;
   align-items: center;
@@ -153,7 +153,7 @@ body {
 .nav-profile-name {
   font-size: 12px;
   font-weight: 700;
-  color: var(--dark);
+  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -161,7 +161,7 @@ body {
 
 .nav-profile-email {
   font-size: 10px;
-  color: var(--text-muted);
+  color: rgba(255,255,255,0.45);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -170,45 +170,43 @@ body {
 .nav-menu-label {
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.6px;
-  color: var(--text-muted);
-  padding: 10px 4px 4px;
-  opacity: 0.6;
+  letter-spacing: 0.7px;
+  color: rgba(255,255,255,0.35);
+  padding: 10px 4px 3px;
 }
 
 .nav-menu-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 4px;
+  padding: 7px 6px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--dark);
+  color: rgba(255,255,255,0.8);
   text-decoration: none;
   border-radius: 6px;
   transition: background 0.1s;
   cursor: pointer;
 }
 
-.nav-menu-row:hover { background: var(--light); }
+.nav-menu-row:hover { background: rgba(255,255,255,0.08); }
 
-.nav-menu-row svg { flex-shrink: 0; color: var(--text-muted); }
+.nav-menu-row svg { flex-shrink: 0; color: rgba(255,255,255,0.45); }
 
-.nav-menu-arrow { margin-left: auto; color: var(--text-muted); font-size: 14px; }
+.nav-menu-arrow { margin-left: auto; color: rgba(255,255,255,0.25); font-size: 14px; }
 
 .nav-menu-sub {
   display: block;
   font-size: 10px;
   font-weight: 400;
-  color: var(--text-muted);
+  color: rgba(255,255,255,0.4);
   margin-top: 1px;
 }
 
 .nav-menu-note {
   font-size: 10px;
-  color: var(--text-muted);
+  color: rgba(255,255,255,0.3);
   padding: 10px 4px 4px;
-  opacity: 0.7;
 }
 
 /* ── View panels ── */
