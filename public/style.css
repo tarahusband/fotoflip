@@ -54,6 +54,8 @@ body {
   flex-direction: column;
   padding: 0 0 16px;
   z-index: 100;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .nav-brand {
