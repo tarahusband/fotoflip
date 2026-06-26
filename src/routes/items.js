@@ -157,8 +157,12 @@ router.put('/api/items/:id/bundle', async (req, res) => {
       const photoIds = JSON.parse(item.photo_ids || '[]');
       const photo    = photoIds.map(id => db.prepare('SELECT * FROM photos WHERE id = ?').get(id)).filter(Boolean)[0];
       if (photo) {
-        const meta        = photo.metadata ? JSON.parse(photo.metadata) : {};
-        const imageSource = photo.cloudinary_url || meta.imgbbUrl;
+        const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
+        // Prefer processed file (best quality); fall back to Cloudinary URL
+        let imageSource = photo.cloudinary_url || meta.imgbbUrl;
+        if (photo.processed_path) {
+          try { await fs.access(photo.processed_path); imageSource = photo.processed_path; } catch {}
+        }
         if (imageSource) {
           const { main, sub } = getBundleLabel(meta, item);
           const buf      = await applyBundleLabel(imageSource, main, sub);
