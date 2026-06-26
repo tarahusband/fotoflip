@@ -1590,7 +1590,16 @@ function renderOnboarding() {
 function renderDashboardDraftQueue(drafts) {
   const lower = document.getElementById('dashBodyLower');
   const el = document.getElementById('dashDraftQueue');
-  if (!drafts.length) { el.innerHTML = ''; return; }
+  if (!drafts.length) {
+    el.innerHTML = `
+      <div class="dash-card-title">Draft Queue</div>
+      <div class="dash-empty" style="padding:24px 0">
+        <div style="font-size:28px;margin-bottom:8px">✅</div>
+        <div style="font-weight:600;color:var(--dark);margin-bottom:4px">All caught up</div>
+        <div style="font-size:12px;color:var(--text-muted)">No items waiting for review</div>
+      </div>`;
+    return;
+  }
   lower.classList.remove('hidden');
   el.innerHTML = `
     <div class="dash-card-title">Draft Queue <span class="dash-badge">${drafts.length}</span></div>
