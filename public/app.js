@@ -1270,6 +1270,14 @@ function bindDropZone() {
 
 async function uploadFiles(fileList) {
   if (!fileList.length) return;
+  const dz = document.getElementById('dropZone');
+  const fi = document.getElementById('fileInput');
+  if (dz) {
+    dz.style.pointerEvents = 'none';
+    dz.style.opacity = '0.7';
+    dz.innerHTML = `<div class="drop-zone-icon">⏳</div><h3>Uploading…</h3><p>${fileList.length} photo${fileList.length !== 1 ? 's' : ''}</p>`;
+  }
+  if (fi) fi.disabled = true;
   const fd = new FormData();
   for (const f of fileList) fd.append('photos', f);
   try {
@@ -1278,6 +1286,7 @@ async function uploadFiles(fileList) {
     renderImportStep();
   } catch (e) {
     toast('🌸 Upload failed: ' + e.message, 'error');
+    renderImportStep();
   }
 }
 
