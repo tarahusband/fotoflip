@@ -13,6 +13,12 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+router.get('/api/admin/notifications', requireAdmin, (req, res) => {
+  const db = getDb();
+  const pending_access_requests = db.prepare(`SELECT COUNT(*) as n FROM request_access WHERE status = 'pending'`).get().n;
+  res.json({ pending_access_requests });
+});
+
 router.get('/api/admin/health', requireAdmin, (req, res) => {
   let db_connected = false, items = 0, photos = 0, missing_thumbnails = 0;
   try {

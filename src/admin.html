@@ -211,7 +211,7 @@
 
   <!-- Access Requests -->
   <div class="section">
-    <div class="section-title">Access Requests</div>
+    <div class="section-title">Access Requests <span id="adminRequestsDot" style="display:none;width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;margin-left:6px;vertical-align:middle;"></span></div>
     <div class="card">
       <div id="requestsContent" class="spinner">Loading…</div>
     </div>
@@ -480,6 +480,9 @@ async function loadAccessRequests() {
   const el = document.getElementById('requestsContent');
   try {
     const rows = await apiFetch('/api/admin/access-requests');
+    const pendingCount = rows.filter(r => r.status === 'pending').length;
+    const dot = document.getElementById('adminRequestsDot');
+    if (dot) dot.style.display = pendingCount > 0 ? 'inline-block' : 'none';
     if (!rows.length) { el.innerHTML = '<div class="empty">No access requests yet.</div>'; return; }
     const statusBadge = s => {
       const colors = { pending: '#888', approved: '#27AE60', dismissed: '#aaa' };

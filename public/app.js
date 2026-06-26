@@ -87,6 +87,7 @@ async function loadCurrentUser() {
     if (user.role === 'admin') {
       const adminLink = document.getElementById('navAdminLink');
       if (adminLink) adminLink.style.display = '';
+      loadAdminNotifications();
     }
     if (user.impersonating) {
       showImpersonationBanner(user.impersonating);
@@ -106,6 +107,14 @@ function showImpersonationBanner(target) {
     <button onclick="exitImpersonation()" style="background:#fff;color:#7C3AED;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;">Exit Support View</button>`;
   document.body.prepend(banner);
   document.body.style.paddingTop = '42px';
+}
+
+async function loadAdminNotifications() {
+  try {
+    const data = await apiFetch('/api/admin/notifications');
+    const dot  = document.getElementById('adminNotifDot');
+    if (dot) dot.style.display = data.pending_access_requests > 0 ? 'block' : 'none';
+  } catch {}
 }
 
 async function exitImpersonation() {
