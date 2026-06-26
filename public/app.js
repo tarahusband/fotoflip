@@ -67,18 +67,18 @@ async function loadCurrentUser() {
           <span class="nav-menu-arrow">›</span>
         </a>
         <div class="nav-menu-label">LEGAL</div>
-        <a href="/privacy" target="_blank" class="nav-menu-row">
-          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <a href="/privacy" target="_blank" class="nav-menu-row nav-menu-row-sm">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           Privacy Policy
           <span class="nav-menu-arrow">›</span>
         </a>
-        <a href="/terms" target="_blank" class="nav-menu-row">
-          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <a href="/terms" target="_blank" class="nav-menu-row nav-menu-row-sm">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           Terms of Use
           <span class="nav-menu-arrow">›</span>
         </a>
-        <a href="/do-not-sell" target="_blank" class="nav-menu-row">
-          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        <a href="/do-not-sell" target="_blank" class="nav-menu-row nav-menu-row-sm">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
           Do Not Sell or Share
           <span class="nav-menu-arrow">›</span>
         </a>

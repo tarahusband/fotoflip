@@ -209,6 +209,16 @@ body {
   padding: 10px 4px 4px;
 }
 
+.nav-menu-row-sm {
+  font-size: 10px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.35);
+  padding: 4px 6px;
+}
+
+.nav-menu-row-sm svg { color: rgba(255,255,255,0.2); }
+.nav-menu-row-sm .nav-menu-arrow { color: rgba(255,255,255,0.15); }
+
 /* ── View panels ── */
 .view-panel {
   flex: 1;
