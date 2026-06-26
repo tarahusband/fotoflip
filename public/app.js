@@ -29,6 +29,7 @@ function switchView(view) {
   document.getElementById('viewInventory').classList.toggle('hidden', view !== 'inventory');
   document.getElementById('viewMarkets').classList.toggle('hidden', view !== 'markets');
   document.getElementById('viewSettings').classList.toggle('hidden', view !== 'settings');
+  document.getElementById('viewHelp').classList.toggle('hidden', view !== 'help');
   document.querySelectorAll('.nav-item').forEach(btn =>
     btn.classList.toggle('active', btn.dataset.view === view)
   );
@@ -36,6 +37,84 @@ function switchView(view) {
   if (view === 'home') loadDashboard();
   if (view === 'markets') loadMarkets();
   if (view === 'settings') loadSettings();
+  if (view === 'help') renderHelp();
+}
+
+// ── Help ──────────────────────────────────────────────────────────────────────
+const HELP_SECTIONS = [
+  { label: 'Product Overview', items: [
+    { n:1, q:'What is FotoFlip?', a:'FotoFlip is a resale listing tool that turns photos taken at the point of purchase into complete, marketplace-ready listings using AI. You photograph an item when you buy it, upload the photo, and FotoFlip generates a title, description, price suggestion, category, and condition — ready to export to your resale platforms.' },
+    { n:2, q:'Who is FotoFlip built for?', a:'FotoFlip is built for active resellers — people who buy items to resell on platforms like Poshmark, Whatnot, eBay, or Etsy. It is especially useful for resellers who buy in volume and need to move items from purchase to listing as fast as possible.' },
+    { n:3, q:'What problem does FotoFlip solve for resellers?', a:'The biggest bottleneck in reselling is the time between buying an item and getting it listed. FotoFlip removes that gap by starting the listing process the moment you photograph the item — no manual data entry, no switching between apps, no forgetting what something was.' },
+    { n:4, q:'What is the main workflow from photo upload to export?', a:'<ul><li><strong>Import</strong> — Upload one or more photos of an item.</li><li><strong>Process</strong> — AI analyzes the photo and generates listing details.</li><li><strong>Review</strong> — Review and edit the generated details.</li><li><strong>Export</strong> — Export to Poshmark CSV, Whatnot CSV, or push to Etsy via Make.com.</li><li><strong>Track</strong> — Mark items as listed, sold, or shipped in inventory.</li></ul>' },
+    { n:5, q:'What makes FotoFlip different from a normal inventory spreadsheet?', a:'FotoFlip generates listing content from a photo using AI — no typing required. It is designed around the purchase moment, not the listing moment. It also manages the full item lifecycle and exports directly to platform-specific CSV formats.' },
+  ]},
+  { label: 'User Workflow', items: [
+    { n:6, q:'How does a user upload photos?', a:'Click <strong>Import Photos</strong> in the sidebar. Drag and drop photos onto the upload zone, or click to select files. Each photo becomes one item. You can set a box name, weight, and a hint for the AI before saving.' },
+    { n:7, q:'What happens after a photo is uploaded?', a:'The photo is uploaded to Cloudinary for permanent storage. FotoFlip then queues the item for AI processing. The AI analyzes the photo and writes a complete listing: title, brand, category, condition, price suggestion, description, and tags. Processing typically takes 10–30 seconds per item.' },
+    { n:8, q:'How does AI generate listing details?', a:'FotoFlip sends the photo to Claude (Anthropic) with a structured prompt. Claude returns a JSON object with listing fields. If Claude fails, FotoFlip falls back to GPT-4o (OpenAI). The result is saved to the item\'s photo metadata and displayed in the item detail view.' },
+    { n:9, q:'What listing fields does FotoFlip create or suggest?', a:'<ul><li>Title</li><li>Brand</li><li>Category</li><li>Condition / condition notes</li><li>Suggested price</li><li>Description</li><li>Tags</li><li>Color and material (when visible)</li></ul>' },
+    { n:10, q:'How does a user review, edit, and save an item?', a:'Click any item in the Photos or Inventory view to open the detail panel. You can edit the title, price, description, condition, and other fields directly. Changes are saved immediately. You can also re-run AI processing if the first result was poor.' },
+    { n:11, q:'How does FotoFlip organize inventory?', a:'Items move through a status lifecycle: <strong>Draft → Ready → Listed → Sold → Shipped → Archived</strong>. You can filter by status, search by title or brand, assign box names and locations, and track which platforms an item has been exported to.' },
+    { n:12, q:'How does exporting to resale platforms work?', a:'FotoFlip generates platform-specific CSV files you download and upload directly to the platform. For Etsy, it can push listings via a Make.com webhook. Exports include all required platform fields and Cloudinary image URLs.' },
+    { n:13, q:'Which platforms are currently supported or planned?', a:'<ul><li><strong>Poshmark</strong> — CSV export (46-column format, 39-row batch limit)</li><li><strong>Whatnot</strong> — CSV export (21-column format)</li><li><strong>Etsy</strong> — OAuth + Make.com webhook relay</li><li><strong>eBay</strong> — Planned (backlog)</li></ul>' },
+  ]},
+  { label: 'Accounts + Access', items: [
+    { n:14, q:'How does Google login work?', a:'FotoFlip uses Google OAuth — no separate password. Click <strong>Sign in with Google</strong>, choose your Google account, and you are signed in. Sessions last 7 days. Agreeing to the Terms and Privacy Policy is required on your first login from any new device.' },
+    { n:15, q:'What does invite-only beta mean?', a:'During beta, only pre-approved email addresses can log in. If your Google account email is not on the invite list, you are redirected to the access request page instead of the app. The admin controls who is on the list.' },
+    { n:16, q:'What happens when someone requests access?', a:'Users who are not invited can fill out a request-access form at the <strong>/not-invited</strong> page. The form collects their name, email, seller details, and consent. The request is saved and the admin sees a green notification dot in the sidebar until it is reviewed.' },
+    { n:17, q:'How does the admin approve, invite, revoke, or manage users?', a:'From the <strong>Admin panel</strong> (/admin): <ul><li><strong>Invite list</strong> — Add or remove email addresses that are allowed to log in.</li><li><strong>Access requests</strong> — Approve (adds to invite list) or dismiss pending requests.</li><li><strong>Users</strong> — Promote to admin, demote, revoke, or restore any user account.</li></ul>' },
+    { n:18, q:'What does a new user see when they first log in?', a:'After passing the invite gate, new users land on the dashboard. If they have no items yet, an onboarding state guides them to import their first photo. Their inventory is empty and completely separate from other users.' },
+  ]},
+  { label: 'Data + Security', items: [
+    { n:19, q:"How does FotoFlip keep each user's inventory separate?", a:'Every item, photo, and listing is tagged with a <code>user_id</code>. All API routes filter by the authenticated user\'s ID — you can only see and edit your own data. Admin routes are the only exception and require the admin role.' },
+    { n:20, q:'Where are photos stored?', a:'Photos are uploaded to <strong>Cloudinary</strong> on ingest and stored permanently there. Cloudinary URLs are stored in the database and used for all exports and previews.' },
+    { n:21, q:'What data is stored in the database?', a:'<ul><li>User accounts (Google ID, email, name, role, status)</li><li>Items (status, photo IDs, SKU, inventory fields)</li><li>Photos (file paths, Cloudinary URLs, AI metadata JSON)</li><li>Listings (platform, price, status, export dates)</li><li>Settings, consent records, access requests, session data</li></ul>' },
+    { n:22, q:'How does FotoFlip handle privacy, consent, and support access?', a:'Users consent to the Terms and Privacy Policy on first login. Consent is stored with a timestamp and version. If you ask support for help, the admin may review your account details to diagnose the issue — you consent to this at login.' },
+    { n:23, q:'What happens if a user is revoked or removed?', a:'Revoking a user immediately ends their active session — they are signed out on their next request and cannot log back in. Their data remains in the database and is not deleted. The admin can restore the account at any time.' },
+  ]},
+  { label: 'Admin', items: [
+    { n:24, q:'What can an admin see and manage?', a:'Admins have access to a dedicated panel at <code>/admin</code> with: <ul><li>System health — item counts, photo counts, AI and Cloudinary status</li><li>User management — roles, status, consent dates, item counts</li><li>Invite list — add and remove approved emails</li><li>Access requests — review and approve or dismiss requests</li><li>Quick actions — database backup, normalize titles, regenerate labels</li></ul>' },
+    { n:25, q:'How does customer support help a user without changing data incorrectly?', a:'Admins can use <strong>View as User</strong> in the admin panel to enter a read-only support view scoped to that user\'s account. All write operations are blocked during this mode. A purple banner is shown at the top of the screen at all times, and every support session is logged with a start and end timestamp.' },
+  ]},
+];
+
+let helpRendered = false;
+
+function renderHelp(filter) {
+  const content = document.getElementById('helpContent');
+  const noResults = document.getElementById('helpNoResults');
+  if (!content) return;
+  const q = (filter || '').toLowerCase().trim();
+  let html = '', total = 0;
+  for (const section of HELP_SECTIONS) {
+    const matches = section.items.filter(item => !q || item.q.toLowerCase().includes(q) || item.a.toLowerCase().includes(q));
+    if (!matches.length) continue;
+    total += matches.length;
+    html += `<div class="help-section-label">${section.label}</div>`;
+    for (const item of matches) {
+      html += `<div class="help-qa-card" id="hqa-${item.n}">
+        <div class="help-qa-q" onclick="toggleHelpQ(${item.n})">
+          <span class="help-qa-num">${item.n}</span>
+          <span class="help-qa-text">${item.q}</span>
+          <span class="help-qa-chevron">›</span>
+        </div>
+        <div class="help-qa-a">${item.a}</div>
+      </div>`;
+    }
+  }
+  content.innerHTML = html;
+  noResults.style.display = total === 0 ? 'block' : 'none';
+  if (q) document.querySelectorAll('.help-qa-card').forEach(c => c.classList.add('open'));
+  helpRendered = true;
+}
+
+function toggleHelpQ(n) {
+  document.getElementById('hqa-' + n).classList.toggle('open');
+}
+
+function filterHelp() {
+  renderHelp(document.getElementById('helpSearch').value);
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -58,12 +137,6 @@ async function loadCurrentUser() {
         <a href="/auth/logout" class="nav-menu-row">
           <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           Sign out
-          <span class="nav-menu-arrow">›</span>
-        </a>
-        <div class="nav-menu-label">SUPPORT</div>
-        <a href="/support" target="_blank" class="nav-menu-row">
-          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span>Customer Support <span class="nav-menu-sub">Get help, report issues, or send feedback</span></span>
           <span class="nav-menu-arrow">›</span>
         </a>
         <div class="nav-menu-label">LEGAL</div>
