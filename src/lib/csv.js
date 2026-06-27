@@ -1,3 +1,8 @@
+function noUnknown(val, fallback = '') {
+  if (!val) return fallback;
+  return /^unknown$/i.test(String(val).trim()) ? fallback : val;
+}
+
 function buildSku(itemId, meta) {
   const box = (meta.box || '').trim() || 'BOX-001';
   return `${box}-${String(itemId).padStart(3, '0')}`;
@@ -70,8 +75,8 @@ const POSHMARK_HEADERS = ['SKU','ProductID (GTIN)','Title','Description','Depart
 function buildPoshmarkRow(item, meta, imageUrl, q) {
   const { dept, cat, subcat } = poshmarkCategoryMap(meta.category || '');
   const condition  = poshmarkCondition(meta.conditionText);
-  const title      = (meta.title || `${meta.brand || 'Item'} ${meta.category || ''}`.trim()).slice(0, 80);
-  const description = (meta.description || meta.conditionNotes || '').replace(/\n/g, ' ').slice(0, 1490);
+  const title      = noUnknown((meta.title || `${noUnknown(meta.brand, 'Item')} ${meta.category || ''}`.trim()), 'Item').slice(0, 80);
+  const description = noUnknown((meta.description || meta.conditionNotes || ''), '').replace(/\n/g, ' ').slice(0, 1490);
   const price      = parseFloat(meta.suggestedPrice) || 25;
   const origPrice  = parseFloat(meta.msrp) || Math.round(price * 2);
   const sku        = buildSku(item.id, meta);
@@ -99,7 +104,7 @@ function buildPoshmarkRow(item, meta, imageUrl, q) {
   row[7]  = 1;
   row[8]  = q(size);
   row[9]  = q(condition);
-  row[10] = q(meta.brand || '');
+  row[10] = q(noUnknown(meta.brand));
   row[11] = q(color1);
   row[12] = q(color2);
   row[16] = q((tags[0] || '').slice(0, 25));
@@ -170,6 +175,7 @@ function etsyCategoryMap(category) {
 }
 
 module.exports = {
+  noUnknown,
   buildSku,
   POSHMARK_HEADERS,
   buildPoshmarkRow,

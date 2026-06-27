@@ -4,7 +4,7 @@ const fs      = require('fs').promises;
 const crypto  = require('crypto');
 const { getDb, getUserSetting, setUserSetting } = require('../db');
 const { getUserId } = require('../auth');
-const { buildSku, POSHMARK_HEADERS, buildPoshmarkRow, whatnotCategoryMap, whatnotDescription, whatnotCondition, whatnotShipping, etsyCategoryMap } = require('../lib/csv');
+const { noUnknown, buildSku, POSHMARK_HEADERS, buildPoshmarkRow, whatnotCategoryMap, whatnotDescription, whatnotCondition, whatnotShipping, etsyCategoryMap } = require('../lib/csv');
 
 const router = express.Router();
 
@@ -55,7 +55,7 @@ router.post('/api/items/:id/export/whatnot', async (req, res) => {
   const cat       = (meta.category || '').toLowerCase();
   const { whatnotCat, whatnotSub } = whatnotCategoryMap(cat);
   const condition = whatnotCondition(meta.conditionText);
-  const title     = (meta.title || `${meta.brand || 'Item'} ${meta.category || ''}`.trim()).slice(0, 80);
+  const title     = noUnknown(meta.title || `${noUnknown(meta.brand, 'Item')} ${meta.category || ''}`.trim(), 'Item').slice(0, 80);
   const description = whatnotDescription(meta);
   const price     = parseFloat(meta.suggestedPrice) || 25;
   const sku       = buildSku(item.id, meta);
@@ -93,7 +93,7 @@ router.get('/api/export/whatnot', async (req, res) => {
     const cat         = (meta.category || '').toLowerCase();
     const { whatnotCat, whatnotSub } = whatnotCategoryMap(cat);
     const condition   = whatnotCondition(meta.conditionText);
-    const title       = (meta.title || `${meta.brand || 'Item'} ${meta.category || ''}`.trim()).slice(0, 80);
+    const title       = noUnknown(meta.title || `${noUnknown(meta.brand, 'Item')} ${meta.category || ''}`.trim(), 'Item').slice(0, 80);
     const description = whatnotDescription(meta);
     const price       = parseFloat(meta.suggestedPrice) || 25;
     const sku         = buildSku(item.id, meta);
@@ -239,8 +239,8 @@ router.post('/api/items/:id/export/etsy', async (req, res) => {
   if (!photo) return res.status(400).json({ error: 'No photos' });
   const meta = photo.metadata ? JSON.parse(photo.metadata) : {};
 
-  const title       = (meta.title || `${meta.brand || 'Item'} ${meta.category || ''}`.trim()).slice(0, 140);
-  const description = meta.description || meta.conditionNotes || 'See photos for details.';
+  const title       = noUnknown(meta.title || `${noUnknown(meta.brand, 'Item')} ${meta.category || ''}`.trim(), 'Item').slice(0, 140);
+  const description = noUnknown(meta.description || meta.conditionNotes, 'See photos for details.');
   const price       = parseFloat(meta.suggestedPrice) || 25;
   const tags        = Array.isArray(meta.tags) ? meta.tags.slice(0, 13).map(t => t.slice(0, 20)) : [];
   const { etsyTaxonomyId } = etsyCategoryMap(meta.category || '');
@@ -306,11 +306,11 @@ router.post('/api/items/:id/export/make', async (req, res) => {
   }
 
   const payload = {
-    title:       meta.title || `${meta.brand || 'Item'} ${meta.category || ''}`.trim(),
-    description: meta.description || meta.conditionNotes || '',
+    title:       noUnknown(meta.title || `${noUnknown(meta.brand, 'Item')} ${meta.category || ''}`.trim(), 'Item'),
+    description: noUnknown(meta.description || meta.conditionNotes, ''),
     price:       parseFloat(meta.suggestedPrice) || 25,
     quantity:    1,
-    brand:       meta.brand || '',
+    brand:       noUnknown(meta.brand),
     category:    meta.category || '',
     condition:   meta.conditionText || meta.condition || '',
     color:       meta.color || '',

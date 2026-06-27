@@ -359,7 +359,7 @@ async function extractWithOpenAI(photoPath, hint, cloudinaryUrl) {
   const hintLine = hint ? `User hint: ${hint}. Use this to inform your analysis.\n\n` : '';
   const prompt = `${hintLine}You are a resale product expert specializing in estate and luxury goods. Analyze this photo and return ONLY valid JSON with these fields:
 {
-  "brand": "brand name or Unknown — look for logos/signatures/hallmarks: C canvas=Coach, GG=Gucci, LV=Louis Vuitton, CC=Chanel, MK=Michael Kors, also look for jewelry maker marks",
+  "brand": "brand name if identifiable — look for logos/signatures/hallmarks: C canvas=Coach, GG=Gucci, LV=Louis Vuitton, CC=Chanel, MK=Michael Kors, also look for jewelry maker marks. Leave empty string if not identifiable — never use the word Unknown",
   "model": "model name if visible, else empty string",
   "color": "primary color(s)",
   "material": "primary material (gold-tone, silver-tone, sterling, brass, enamel, rhinestone, etc.)",
@@ -444,7 +444,7 @@ async function extractMetadata(photo, processedPath, cloudinaryUrl) {
     console.warn('[FotoFlip] Metadata extraction failed:', err.message);
   }
   return {
-    brand: 'Unknown', model: '', color: '', material: '',
+    brand: '', model: '', color: '', material: '',
     condition: '', conditionText: '', conditionNotes: '',
     category: 'other', suggestedPrice: 0, msrp: null, size: '', isProject: false,
   };

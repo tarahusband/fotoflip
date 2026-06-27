@@ -274,9 +274,42 @@ router.post('/api/items/:id/listing/generate', async (req, res) => {
     const weightUnit = item.weight_unit || 'LB';
     const weightStr = weight ? `${weight} ${weightUnit}` : '';
 
-    const listingPrompt = isBundle
-      ? `Write a Poshmark resale listing for this jewelry lot/bundle for the shop BocaBelle.\n\nKnown metadata: ${JSON.stringify(metadata)}\nWeight: ${weightStr || 'unknown'}\n\nTitle format: [qty/weight] [Lot Type] | [Era] [Materials] | Resell Collect\n- Start with quantity or weight if visible or known — e.g. "100+ pcs", "1 LB", "Large Lot", "50+ pcs"\n- Lot Type: "Jewelry Lot", "Mystery Box", "Estate Lot", "Vintage Lot" — pick best fit\n- Era: Vintage / Estate / Y2K / Modern / Mixed\n- Materials: name 2-3 SPECIFIC materials you can actually see in the photo — examples: "Lampwork Beads", "Rhinestone Charms", "Vintage Buttons", "Pearl Drops", "Enamel Pins", "Crystal Rondelles", "Cameo Pendants", "Seed Beads", "Lucite Flowers", "Copper Wire". NEVER use vague terms like "Craft Lot", "Mixed Pieces", or "Assorted Items"\n- End with use case: "Resell Collect", "Resell DIY", "Resell Wear"\n- Keep total title under 80 characters\n- Add one emoji bookend each side (⚜️ ✨ 💎 🌹)\n\nDescription must follow this exact 6-part structure:\n1. Hook line — excitement/mystery opener (1 sentence, no brand name)\n2. What You Might Discover — 3-4 bullet points with ✨, list item types and styles from the photo\n3. The BocaBelle Promise — "Every box is topped off and always includes extra pieces. ✨"\n4. Condition Notes — include all of these points: wearable lot that may include a flawed piece; sold as is with no promise of anything; grab bag style — remove one piece at a time to prevent tangling; as to not compromise the integrity of the items, pieces are not cleaned — that is the buyer's job\n5. Metal Clarity — gold-tone/silver-tone, not tested or verified, sold as found\n6. SEO Tags line — "You may also like~" followed by 8-10 comma-separated search terms\n7. No Returns block — use this exactly: "💛 Final sale: To protect against item switching or missing pieces, all lots/bundles are sold as-is with no returns, exchanges, cancellations, or refunds unless required by platform policy, so please message me with any questions before purchasing. Thank you."\n\nReturn JSON only:\n{\n  "title": "...",\n  "description": "...",\n  "category": "one of: necklace|bracelet|ring|earrings|pendant|brooch|watch|tote|crossbody|wallet|clutch|satchel|handbag|backpack|clothing|shoes|accessory|toy|collectible|other",\n  "tags": ["8 to 12 relevant search tags"]\n}`
-      : `Write a Whatnot resale listing for this item.\n\nKnown metadata: ${JSON.stringify(metadata)}\n\nTitle format: 🅑 | Brand | Category | Resale Keyword ♻️\n- Brand: use the brand name, or "Vintage" if unknown/unbranded\n- Category: item type (Brooch, Earrings, Necklace, Bracelet, Ring, Watch, Handbag, Tote, Crossbody, etc.)\n- Resale Keyword: pick the most fitting: "Vintage Find" | "High Resale" | "Collector's Piece" | "Trending Pick" | "Estate Find" | "Statement Piece" | "Boutique Find" | "Flips Well"\n- Keep total title under 80 characters\n\nDescription format: Brand — material — condition notes. Happy to answer any questions! ♻️\n- One or two sentences max\n- Mention any visible wear, repairs, or notable features honestly\n- Keep it conversational and buyer-friendly\n\nReturn JSON only:\n{\n  "title": "...",\n  "description": "...",\n  "category": "one of: necklace|bracelet|ring|earrings|pendant|brooch|watch|tote|crossbody|wallet|clutch|satchel|handbag|backpack|clothing|shoes|accessory|toy|collectible|other",\n  "tags": ["8 to 12 relevant search tags"]\n}`;
+    const listingPrompt = `Write a resale listing for this item for the BocaBelle shop.
+
+Known metadata: ${JSON.stringify(metadata)}${weightStr ? `\nWeight: ${weightStr}` : ''}
+Is lot/bundle: ${isBundle ? 'yes' : 'no'}
+
+TITLE RULES:
+- Must begin with ⚜️ and end with 💗
+- Maximum 80 characters total (including emojis)
+- Individual item template: ⚜️ [Brand/Item Type] | [Style/Category] | [Size/Color/Hook] 💗
+- Lot/bundle template: ⚜️ [Weight/Count + Lot Type] | [Key Contents] | Make Offer 💗
+- Never use "Unknown" or "Resell Collect"
+- "Make Offer" only for lots when it fits within the character limit
+
+DESCRIPTION RULES:
+- One paragraph only — no bullet points, no sections
+- Use this exact template:
+  ✨ Hi, thank you for looking. [One sentence about the product.] 💌 Make an offer, have it come to your house, and bundle to save. 💛 Sold as-is with no promise of anything specific or precious metals. Pieces are not cleaned in order to preserve their integrity. To protect against item switching, all lots are sold as-is and photographed as packed. Have fun treasure hunting! — BocaBelle
+- Never include: "Unknown", "Might discover", "Please review photos", "Not tested for metal content"
+- No keyword stuffing or long lists
+
+FIELD RULES:
+- Never use "Unknown" in any field
+- brand: leave as empty string if not identifiable
+- category: pick the closest match from the list
+- size: empty string if not applicable
+- color: empty string if unclear
+- tags: 8–12 relevant search terms
+
+Return JSON only — no markdown, no explanation:
+{
+  "title": "...",
+  "description": "...",
+  "brand": "...",
+  "category": "one of: necklace|bracelet|ring|earrings|pendant|brooch|watch|tote|crossbody|wallet|clutch|satchel|handbag|backpack|clothing|shoes|accessory|toy|collectible|other",
+  "tags": ["8 to 12 relevant search tags"]
+}`;
 
     let text = '';
     if (anthropicKey) {
