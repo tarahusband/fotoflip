@@ -168,7 +168,7 @@ async function applyBundleLabel(imagePath, main, sub) {
     ? Buffer.from(await fetch(imagePath).then(r => r.arrayBuffer()))
     : imagePath;
   const photoBuffer = await sharp(imageInput)
-    .resize(SIZE, SIZE, { fit: 'cover', position: 'centre' })
+    .resize(SIZE, SIZE, { fit: 'cover', position: 'attention' })
     .modulate({ brightness: 1.10, saturation: 1.06 })
     .sharpen({ sigma: 0.75, m1: 0.8, m2: 1.8 })
     .toBuffer();
