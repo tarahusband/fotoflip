@@ -258,9 +258,17 @@ router.post('/api/items/:id/listing/generate', async (req, res) => {
   if (!anthropicKey && !openaiKey) return res.status(400).json({ error: '🌸 No AI API key configured' });
 
   try {
-    const imageData = await fs.readFile(photo.path);
-    const base64    = imageData.toString('base64');
-    const ext       = photo.path.match(/\.png$/i) ? 'image/png' : 'image/jpeg';
+    let imageData;
+    let ext = photo.path?.match(/\.png$/i) ? 'image/png' : 'image/jpeg';
+    try {
+      imageData = await fs.readFile(photo.path);
+    } catch {
+      if (!photo.cloudinary_url) return res.status(400).json({ error: '🌸 Photo file not found and no cloud backup available.' });
+      const resp = await fetch(photo.cloudinary_url);
+      imageData  = Buffer.from(await resp.arrayBuffer());
+      ext        = photo.cloudinary_url.match(/\.png(\?|$)/i) ? 'image/png' : 'image/jpeg';
+    }
+    const base64 = imageData.toString('base64');
     const isBundle  = item.is_bundle;
     const weight    = item.weight || '';
     const weightUnit = item.weight_unit || 'LB';
